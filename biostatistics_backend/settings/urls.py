@@ -26,6 +26,9 @@ urlpatterns = [
     # Включаем URL-ы приложения users
     path('users/', include('apps.users.urls')),
 
+    # Включаем URL-ы приложения courses
+    path('courses/', include('apps.courses.urls')),
+
     # --- НАСТРОЙКА SWAGGER ---
     # 1. Этот эндпоинт просто генерирует схему (файл json/yaml) со всеми твоими путями
     path('schema/', SpectacularAPIView.as_view(), name='schema'),

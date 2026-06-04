@@ -34,6 +34,7 @@ EXTERNAL_APPS = [
     "drf_spectacular",
     "rest_framework_simplejwt",
     "apps.users",
+    "apps.courses",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + EXTERNAL_APPS

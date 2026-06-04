@@ -23,7 +23,7 @@ from apps.users.serializers import (
     UserRegisterSerializer,
     UserUpdateSerializer,
 )
-from apps.users.permisions import IsProfileOwner, IsTeacherOrAdminOrReadOnly
+from apps.users.permissions import IsProfileOwner, IsTeacherOrAdminOrReadOnly
 from apps.users.models import CustomUser  # Исправили путь импорта
 
 

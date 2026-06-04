@@ -1,5 +1,7 @@
 from django.apps import AppConfig
 
 
-class UsersConfig(AppConfig):
-    name = 'users'
+class CoursesConfig(AppConfig):
+    name = "apps.courses"
+    label = "courses"
+    verbose_name = "Курсы"
