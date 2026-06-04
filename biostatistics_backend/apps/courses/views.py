@@ -1,14 +1,18 @@
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.core.cache import cache
+from django.shortcuts import get_object_or_404
 from rest_framework import viewsets
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
 
 from apps.courses.models import Course, Module, Lesson
 from apps.courses.serializers import (
     CourseSerializer, 
     CourseDetailSerializer, 
     ModuleSerializer, 
-    LessonSerializer
+    LessonSerializer,
+    ContentPolymorphicSerializer
 )
 from apps.courses.permissions import IsAdminOrTeacherOrReadOnly
 
@@ -66,3 +70,13 @@ class LessonViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         cache.clear()
         instance.delete()
+
+@api_view(['GET'])
+def lesson_contents(request, id):
+    lesson = get_object_or_404(Lesson, id=id)
+
+    contents = lesson.contents.all()
+
+    serializer = ContentPolymorphicSerializer(contents, many=True)
+
+    return Response(serializer.data)

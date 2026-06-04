@@ -1,7 +1,8 @@
 #third party modules
 from rest_framework import serializers
+from polymorphic.contrib.drf.serializers import PolymorphicSerializer
 # Local modules
-from apps.courses.models import Course, Module, Lesson
+from apps.courses.models import Course, Module, Lesson, Content, TextContent, ImageContent, VideoContent
 
 
 # 1. Сначала описываем самый глубокий уровень — Уроки
@@ -46,3 +47,45 @@ class CourseDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Course
         fields = ["id", "course_name", "description", "modules"]
+
+
+class ContentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Content
+        fields = ('order',)
+
+class TextContentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TextContent
+        fields = ('order', 'content',)
+
+class ImageContentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ImageContent
+        fields = ('order', 'content_url',)
+
+class VideoContentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VideoContent
+        fields = ('order', 'content_url',)
+
+class ContentPolymorphicSerializer(PolymorphicSerializer):
+    resource_type_field_name = 'type'
+    model_serializer_mapping = {
+        Content: ContentSerializer,
+        TextContent: TextContentSerializer,
+        ImageContent: ImageContentSerializer,
+        VideoContent: VideoContentSerializer,
+    }
+
+    def to_resource_type(self, model_or_instance):
+        name = model_or_instance._meta.object_name.lower()
+
+        if name == "textcontent":
+            return "text"
+        elif name == "imagecontent":
+            return "image"
+        elif name == "videocontent":
+            return "video"
+
+        return name

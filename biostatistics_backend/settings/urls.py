@@ -16,6 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
+from django.conf import settings
+from django.conf.urls.static import static
 
 # Third-party modules
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
@@ -37,3 +39,5 @@ urlpatterns = [
     # В url_name='schema' мы передаем имя пути из строчки выше, чтобы Swagger знал, откуда качать JSON-схему
     path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
+
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

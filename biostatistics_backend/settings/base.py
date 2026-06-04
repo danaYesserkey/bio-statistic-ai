@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+from os import path
 
 from settings.conf import *  # noqa
 
@@ -35,6 +36,8 @@ EXTERNAL_APPS = [
     "rest_framework_simplejwt",
     "apps.users",
     "apps.courses",
+    "polymorphic",
+    "adminsortable2",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + EXTERNAL_APPS
@@ -105,3 +108,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = path.join(BASE_DIR, 'media')

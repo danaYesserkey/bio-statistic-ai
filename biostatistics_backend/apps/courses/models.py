@@ -1,4 +1,5 @@
 from django.db import models
+from polymorphic.models import PolymorphicModel
 
 class Course(models.Model):
     # Оставляем имя поля как на схеме (course_name)
@@ -33,3 +34,23 @@ class Lesson(models.Model):
 
     def __str__(self):
         return self.lesson_name
+
+
+class Content(PolymorphicModel):
+    lesson = models.ForeignKey(Lesson, related_name="contents", on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(default=0, blank=False, null=False)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f"{self.lesson} content"
+
+class TextContent(Content):
+    content = models.TextField()
+
+class ImageContent(Content):
+    content_url = models.FileField(upload_to="suret/")
+
+class VideoContent(Content):
+    content_url = models.FileField(upload_to="beine/")

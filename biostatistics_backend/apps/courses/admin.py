@@ -1,7 +1,9 @@
 from django.contrib import admin
+from polymorphic.admin import StackedPolymorphicInline, PolymorphicInlineSupportMixin
 
-# Register your models here.
-from .models import Course, Module, Lesson
+from .models import Course, Module, Lesson, TextContent, ImageContent, VideoContent, Content
+
+
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
     list_display = ('id', 'course_name', 'description')
@@ -13,8 +15,27 @@ class ModuleAdmin(admin.ModelAdmin):
     search_fields = ('module_name',)
     list_filter = ('course',)
 
+# Content
+class ContentInline(StackedPolymorphicInline):
+    class TextContentInline(StackedPolymorphicInline.Child):
+        model = TextContent
+    
+    class ImageContentInline(StackedPolymorphicInline.Child):
+        model = ImageContent
+    
+    class VideoContentInline(StackedPolymorphicInline.Child):
+        model = VideoContent
+    
+    model = Content
+    child_inlines = (
+        TextContentInline,
+        ImageContentInline,
+        VideoContentInline,
+    )
+
+
 @admin.register(Lesson)
-class LessonAdmin(admin.ModelAdmin):
+class LessonAdmin(PolymorphicInlineSupportMixin, admin.ModelAdmin):
     list_display = ('id', 'lesson_name', 'module', 'order')
     
     fieldsets = (
@@ -25,3 +46,5 @@ class LessonAdmin(admin.ModelAdmin):
             'fields': ('content_kz',),
         }),
     )
+
+    inlines = (ContentInline,)
