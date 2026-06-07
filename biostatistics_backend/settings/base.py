@@ -36,8 +36,10 @@ EXTERNAL_APPS = [
     "rest_framework_simplejwt",
     "apps.users",
     "apps.courses",
+    "apps.quizzes",
     "polymorphic",
     "adminsortable2",
+    "nested_admin",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + EXTERNAL_APPS

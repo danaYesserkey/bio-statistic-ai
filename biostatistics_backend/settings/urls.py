@@ -26,10 +26,12 @@ urlpatterns = [
     path('admin/', admin.site.urls),
 
     # Включаем URL-ы приложения users
-    path('users/', include('apps.users.urls')),
+    path('api/users/', include('apps.users.urls')),
 
     # Включаем URL-ы приложения courses
-    path('courses/', include('apps.courses.urls')),
+    path('api/', include('apps.courses.urls')),
+
+    path('api/quizzes/', include('apps.quizzes.urls')),
 
     # --- НАСТРОЙКА SWAGGER ---
     # 1. Этот эндпоинт просто генерирует схему (файл json/yaml) со всеми твоими путями
