@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 from os import path
 
@@ -93,6 +94,13 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 AUTH_USER_MODEL = "users.CustomUser"
+
+# Этот префикс будет в URL (например, /static/admin/css/...)
+STATIC_URL = '/static/'
+
+# Самое важное: путь к папке, куда Django скопирует ВСЮ статику проекта
+# Она должна совпадать с тем, что мы прописали в конфиге Nginx
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/

@@ -1,15 +1,25 @@
 from django.core.cache import cache
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404 # noqa
 from rest_framework import viewsets
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 from apps.courses.models import Course, Module, Lesson
 from apps.courses.serializers import (
     CourseSerializer, 
     CourseDetailSerializer, 
     ModuleSerializer, 
-    LessonSerializer
+    LessonSerializer,
+    ContentPolymorphicSerializer,
 )
 from apps.courses.permissions import IsAdminOrTeacherOrReadOnly
+
+
+@api_view(['GET'])
+def lesson_contents(request, id):
+    lesson = get_object_or_404(Lesson, id=id)
+    serializer = ContentPolymorphicSerializer(lesson.contents.all(), many=True)
+    return Response(serializer.data)
 
 
 # Выносим логику очистки в хелпер, так как курс может измениться через Модуль или Урок
@@ -100,3 +110,4 @@ class LessonViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         course_id = instance.module.course_id if instance.module else None
         instance.delete()
+        invalidate_course_cache(course_id)
