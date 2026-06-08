@@ -27,3 +27,13 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",  # /1 — это номер базы данных в Redis
+        "OPTIONS": {
+            # "CLIENT_CLASS": "django.core.cache.backends.redis.RedisClient",
+        }
+    }
+}
