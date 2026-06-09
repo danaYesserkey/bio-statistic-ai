@@ -89,3 +89,11 @@ class ContentPolymorphicSerializer(PolymorphicSerializer):
             return "video"
 
         return name
+
+
+class LessonDetailSerializer(serializers.ModelSerializer):
+    contents = ContentPolymorphicSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Lesson
+        fields = ["id", "module", "lesson_name", "order", "contents"]

@@ -10,16 +10,9 @@ from apps.courses.serializers import (
     CourseDetailSerializer, 
     ModuleSerializer, 
     LessonSerializer,
-    ContentPolymorphicSerializer,
+    LessonDetailSerializer,
 )
 from apps.courses.permissions import IsAdminOrTeacherOrReadOnly
-
-
-@api_view(['GET'])
-def lesson_contents(request, id):
-    lesson = get_object_or_404(Lesson, id=id)
-    serializer = ContentPolymorphicSerializer(lesson.contents.all(), many=True)
-    return Response(serializer.data)
 
 
 # Выносим логику очистки в хелпер, так как курс может измениться через Модуль или Урок
@@ -111,3 +104,8 @@ class LessonViewSet(viewsets.ModelViewSet):
         course_id = instance.module.course_id if instance.module else None
         instance.delete()
         invalidate_course_cache(course_id)
+    
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = LessonDetailSerializer(instance=instance)
+        return Response(serializer.data)

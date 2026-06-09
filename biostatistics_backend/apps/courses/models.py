@@ -19,6 +19,9 @@ class Module(models.Model):
     module_name = models.CharField(max_length=255)
     order = models.IntegerField()
 
+    class Meta:
+        ordering = ['order']
+
     def __str__(self):
         return self.module_name
 
@@ -31,6 +34,9 @@ class Lesson(models.Model):
     # Имя поля со схемы
     content_kz = models.TextField(blank=True, null=True)
     order = models.IntegerField()
+
+    class Meta:
+        ordering = ['order']
 
     def __str__(self):
         return self.lesson_name
@@ -49,8 +55,19 @@ class Content(PolymorphicModel):
 class TextContent(Content):
     content = models.TextField()
 
+    def __str__(self):
+        if len(self.content) > 90:
+            return f"Мәтін - {self.content[:90]}..."
+        return f"Мәтін - {self.content}"
+
 class ImageContent(Content):
     content_url = models.FileField(upload_to="suret/")
 
+    def __str__(self):
+        return f"Сурет - {self.content_url}"
+
 class VideoContent(Content):
     content_url = models.FileField(upload_to="beine/")
+
+    def __str__(self):
+        return f"Бейне - {self.content_url}"
