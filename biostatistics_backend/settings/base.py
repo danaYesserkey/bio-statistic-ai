@@ -38,6 +38,7 @@ EXTERNAL_APPS = [
     "apps.users",
     "apps.courses",
     "apps.quizzes",
+    "apps.stats",
     "polymorphic",
     "adminsortable2",
     "nested_admin",

@@ -33,6 +33,8 @@ urlpatterns = [
 
     path('api/quizzes/', include('apps.quizzes.urls')),
 
+    path('api/stats/', include('apps.stats.urls')),
+
     # --- НАСТРОЙКА SWAGGER ---
     # 1. Этот эндпоинт просто генерирует схему (файл json/yaml) со всеми твоими путями
     path('schema/', SpectacularAPIView.as_view(), name='schema'),

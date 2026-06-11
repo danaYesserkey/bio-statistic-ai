@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from polymorphic.contrib.drf.serializers import PolymorphicSerializer
 
-from .models import Quiz, Question, MultipleChoiceQuestion, EnterValueQuestion, AnswerOption, QuizContext
+from .models import Quiz, Question, MultipleChoiceQuestion, EnterValueQuestion, AnswerOption, QuizContext, WithQuizContext, WithoutQuizContext
 
 
 class AnswerOptionSerializer(serializers.ModelSerializer):
@@ -44,19 +44,49 @@ class QuestionPolymorphicSerializer(PolymorphicSerializer):
 
         return name
 
-class QuizContextSerializer(serializers.ModelSerializer):
+class ContextSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuizContext
+        fields = '__all__'
+
+class WithContextSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WithQuizContext
         fields = ('title', 'text', 'dataset_file',)
 
+class WithoutContextSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WithoutQuizContext
+        fields = '__all__'
+
+class QuizContextSerializer(PolymorphicSerializer):
+    model_serializer_mapping = {
+        QuizContext: ContextSerializer,
+        WithQuizContext: WithContextSerializer,
+        WithoutQuizContext: WithoutContextSerializer,
+    }
+
 class QuizSerializer(serializers.ModelSerializer):
-    questions = QuestionPolymorphicSerializer(many=True, read_only=True)
-    contexts = QuizContextSerializer(many=True, read_only=True)
+    blocks = serializers.SerializerMethodField()
 
     class Meta:
         model = Quiz
         fields = '__all__'
+    
+    def get_blocks(self, obj):
+        blocks = []
 
+        for context in obj.contexts.all():
+            context_data = QuizContextSerializer(context).data
+            questions = QuestionPolymorphicSerializer(context.questions.all(), many=True).data
+
+            if context_data['resourcetype'] is 'WithoutQuizContext':
+                blocks.append({'context': None, 'questions': questions})
+            else:
+                del context_data['resourcetype']
+                blocks.append({'context': context_data, 'questions': questions})
+
+        return blocks
 
 class MCQAnswerSerializer(serializers.Serializer):
     question_type = serializers.CharField(default='mcq')

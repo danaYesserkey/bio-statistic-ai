@@ -1,9 +1,9 @@
 from django.contrib import admin
 from polymorphic.admin import StackedPolymorphicInline, PolymorphicInlineSupportMixin
-from adminsortable2.admin import SortableStackedInline, SortableTabularInline, SortableAdminBase
+from adminsortable2.admin import SortableStackedInline, SortableAdminBase
 
 from .models import Course, Module, Lesson, TextContent, ImageContent, VideoContent, Content
-
+from apps.quizzes.models import Quiz
 
 class ModuleInline(SortableStackedInline):
     model = Module
@@ -28,6 +28,7 @@ class ModuleAdmin(SortableAdminBase, admin.ModelAdmin):
     search_fields = ('module_name',)
     list_filter = ('course',)
     inlines = [LessonInline]
+    fields = ('course', 'module_name',)
 
 # Content
 class ContentInline(StackedPolymorphicInline):
@@ -59,6 +60,11 @@ class ContentOrderInline(SortableStackedInline):
     def has_add_permission(self, request, obj=None):
         return False
 
+class QuizInline(admin.TabularInline):
+    model = Quiz
+    extra = 0
+    show_change_link = True
+
 @admin.register(Lesson)
 class LessonAdmin(SortableAdminBase, PolymorphicInlineSupportMixin, admin.ModelAdmin):
     list_display = ('id', 'lesson_name', 'module', 'order')
@@ -69,4 +75,4 @@ class LessonAdmin(SortableAdminBase, PolymorphicInlineSupportMixin, admin.ModelA
         }),
     )
 
-    inlines = (ContentOrderInline, ContentInline,)
+    inlines = (QuizInline, ContentOrderInline, ContentInline,)

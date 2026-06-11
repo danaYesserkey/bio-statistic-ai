@@ -13,16 +13,26 @@ class QuizAttempt(models.Model):
     completed_at = models.DateTimeField()
     passed = models.BooleanField(default=False)
 
-class QuizContext(models.Model):
+class QuizContext(PolymorphicModel):
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='contexts')
+
+class WithQuizContext(QuizContext):
     title = models.CharField(max_length=300, null=False)
     text = models.TextField(null=False)
     dataset_file = models.FileField(upload_to='derek', null=True, blank=True)
+
+class WithoutQuizContext(QuizContext):
+    def __str__(self):
+        return f"Without context questions - {self.quiz}"
 
 class Question(PolymorphicModel):
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions')
     context = models.ForeignKey(QuizContext, on_delete=models.CASCADE, related_name='questions', null=True, blank=True)
     text = models.TextField(null=False)
+
+    def save(self, *args, **kwargs):
+        self.quiz = self.context.quiz
+        super().save(*args, **kwargs)
 
 class MultipleChoiceQuestion(Question):
     pass

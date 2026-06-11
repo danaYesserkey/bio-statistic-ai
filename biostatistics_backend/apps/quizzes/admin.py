@@ -1,9 +1,14 @@
 from django.contrib import admin
+from django.forms import ModelForm
+from polymorphic.admin import StackedPolymorphicInline, PolymorphicInlineSupportMixin
 from nested_admin.nested import NestedTabularInline, NestedStackedInline, NestedModelAdmin
 
 from .models import (
     Quiz,
+    Question,
     QuizContext,
+    WithQuizContext,
+    WithoutQuizContext,
     MultipleChoiceQuestion,
     EnterValueQuestion,
     AnswerOption
@@ -19,21 +24,55 @@ class AnswerOptionInline(NestedTabularInline):
 class MultipleChoiceInline(NestedStackedInline):
     model = MultipleChoiceQuestion
     extra = 0
-    fields = ('quiz', 'text',)
+    fields = ('text',)
     inlines = [AnswerOptionInline]
 
 class EnterValueInline(NestedStackedInline):
     model = EnterValueQuestion
     extra = 0
-    fields = ('quiz', 'text', 'correct_value',)
+    fields = ('text', 'correct_value',)
 
-class QuizContextInline(NestedStackedInline):
+class WithoutContextForm(ModelForm):
+    class Meta:
+        model = WithoutQuizContext
+        fields = ()
+    
+    def has_changed(self):
+        if not self.instance.pk:
+            return True
+        return super().has_changed()
+
+class ContextInline(StackedPolymorphicInline):
+    class WithContextInline(StackedPolymorphicInline.Child):
+        model = WithQuizContext
+        show_change_link = True
+        # fields
+    
+    class WithoutContextInline(StackedPolymorphicInline.Child):
+        model = WithoutQuizContext
+        show_change_link = True
+        form = WithoutContextForm
+        fields = ()
+    
     model = QuizContext
+    child_inlines = (
+        WithContextInline,
+        WithoutContextInline,
+    )
+
+@admin.register(Quiz)
+class QuizAdmin(PolymorphicInlineSupportMixin, admin.ModelAdmin):
+    inlines = [ContextInline]
+
+class QuestionInline(NestedStackedInline):
+    model = Question
     extra = 0
-    # fields = ('',)
+
+@admin.register(WithQuizContext)
+class WithContextAdmin(NestedModelAdmin):
     inlines = [MultipleChoiceInline, EnterValueInline]
 
-class QuizAdmin(NestedModelAdmin):
-    inlines = [QuizContextInline, MultipleChoiceInline, EnterValueInline]
-
-admin.site.register(Quiz, QuizAdmin)
+@admin.register(WithoutQuizContext)
+class WithoutContextAdmin(NestedModelAdmin):
+    inlines = [MultipleChoiceInline, EnterValueInline]
+    readonly_fields = ('quiz',)
