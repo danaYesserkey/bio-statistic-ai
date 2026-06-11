@@ -20,7 +20,16 @@ class UserReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ["id", "username", "full_name", "email", "university", "role"]
+        fields = [
+            "id",
+            "username",
+            "full_name",
+            "email",
+            "university",
+            "faculty",
+            "group",
+            "role",
+        ]
 
 
 class UserRegisterSerializer(serializers.ModelSerializer):
@@ -34,7 +43,16 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ["username", "full_name", "email", "university", "role", "password"]
+        fields = [
+            "username",
+            "full_name",
+            "email",
+            "university",
+            "faculty",
+            "group",
+            "role",
+            "password",
+        ]
 
     def create(self, validated_data):
         """Создаёт пользователя и хеширует пароль перед сохранением."""
@@ -43,19 +61,30 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         user.set_password(password)
         user.save()
         return user
-    
+
     def validate_email(self, value):
         """Проверяет уникальность email при регистрации."""
         if CustomUser.objects.filter(email=value).exists():
             raise serializers.ValidationError("Email already exists")
         return value
 
+
 class UserRegisterResponseSerializer(serializers.ModelSerializer):
     """Сериализатор для ответа при успешной регистрации."""
 
     class Meta:
         model = CustomUser
-        fields = ["id", "username", "full_name", "email", "university", "role"]
+        fields = [
+            "id",
+            "username",
+            "full_name",
+            "email",
+            "university",
+            "faculty",
+            "group",
+            "role",
+        ]
+
 
 class UserLoginSerializer(serializers.Serializer):
     """Сериализатор для аутентификации пользователя."""
@@ -66,8 +95,8 @@ class UserLoginSerializer(serializers.Serializer):
     def validate(self, data: dict[str, Any]) -> dict[str, Any]:
         """Проверяет учётные данные и возвращает объект пользователя."""
 
-        email = data.get('email')
-        password = data.get('password')
+        email = data.get("email")
+        password = data.get("password")
 
         if email and password:
             user = authenticate(email=email, password=password)
@@ -78,9 +107,10 @@ class UserLoginSerializer(serializers.Serializer):
         else:
             raise serializers.ValidationError("Email and password are required")
 
-        data['user'] = user
+        data["user"] = user
         return data
-    
+
+
 class UserLoginResponseSerializer(serializers.ModelSerializer):
     """Сериализатор для ответа при успешной аутентификации."""
 
@@ -89,7 +119,18 @@ class UserLoginResponseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ["id", "username", "full_name", "email", "university", "role", "refresh", "access"]
+        fields = [
+            "id",
+            "username",
+            "full_name",
+            "email",
+            "university",
+            "faculty",
+            "group",
+            "role",
+            "refresh",
+            "access",
+        ]
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
@@ -97,7 +138,15 @@ class UserUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CustomUser
-        fields = ["username", "full_name", "email", "university", "role"]
+        fields = [
+            "username",
+            "full_name",
+            "email",
+            "university",
+            "faculty",
+            "group",
+            "role",
+        ]
 
     def validate_email(self, value):
         """Проверяет, что обновляемый email остаётся уникальным."""

@@ -63,12 +63,12 @@ class CustomUserViewSet(GenericViewSet):
         """Возвращает список разрешений в зависимости от действия.
 
         - register/login: разрешён любой пользователь.
-        - update/get_info: только аутентифицированный владелец профиля.
+        - update/partial_update/get_info: только аутентифицированный владелец профиля.
         - list/retrieve: только аутентифицированные пользователи с правами учителя/админа или просмотр в режиме только для чтения.
         """
         if self.action in ["register", "login"]:
             permission_classes = [AllowAny]
-        elif self.action in ["update", "get_info"]:
+        elif self.action in ["update", "partial_update", "get_info"]:
             permission_classes = [IsAuthenticated, IsProfileOwner]
         else:  # list, retrieve
             permission_classes = [IsAuthenticated, IsTeacherOrAdminOrReadOnly]
@@ -109,6 +109,10 @@ class CustomUserViewSet(GenericViewSet):
         updated_user = serializer.save()
         response_serializer = UserRegisterResponseSerializer(updated_user)
         return DRFResponse(response_serializer.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request: DRFRequest, pk=None) -> DRFResponse:
+        """Частичное обновление профиля пользователя (PATCH)."""
+        return self.update(request, pk)
 
     def list(self, request: DRFRequest) -> DRFResponse:
         """Возвращает список всех пользователей."""

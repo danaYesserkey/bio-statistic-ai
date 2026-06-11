@@ -37,6 +37,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
 
     university = models.CharField(max_length=255, blank=True, null=True)
+    faculty = models.CharField(max_length=255, blank=True, null=True)
+    group = models.CharField(max_length=255, blank=True, null=True)
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
 
@@ -46,7 +48,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     objects = CustomUserManager()
 
     USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = ["username", "full_name"]
+    REQUIRED_FIELDS = ["username", "full_name", "university", "faculty", "group"]
 
     def __str__(self):
         return self.full_name

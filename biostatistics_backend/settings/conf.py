@@ -37,3 +37,13 @@ CACHES = {
         }
     }
 }
+
+# Spectacular settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Biostatistics Platform API',
+    'DESCRIPTION': 'API для платформы биостатистики',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    # ХАК ТУТ: Говорим Swagger срезать префикс '/api/v1' или '/api' при создании групп!
+    'SCHEMA_PATH_PREFIX': r'/api/', 
+} 
