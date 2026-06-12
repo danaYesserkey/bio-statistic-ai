@@ -11,7 +11,8 @@ from .models import (
     WithoutQuizContext,
     MultipleChoiceQuestion,
     EnterValueQuestion,
-    AnswerOption
+    AnswerOption,
+    QuizAttempt,
 )
 
 
@@ -76,3 +77,5 @@ class WithContextAdmin(NestedModelAdmin):
 class WithoutContextAdmin(NestedModelAdmin):
     inlines = [MultipleChoiceInline, EnterValueInline]
     readonly_fields = ('quiz',)
+
+admin.site.register(QuizAttempt)

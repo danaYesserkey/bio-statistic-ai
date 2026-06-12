@@ -91,7 +91,7 @@ class QuizSerializer(serializers.ModelSerializer):
 class MCQAnswerSerializer(serializers.Serializer):
     question_type = serializers.CharField(default='mcq')
     question_id = serializers.IntegerField()
-    selected_choices = serializers.ListField(child=serializers.IntegerField())
+    selected_choice = serializers.IntegerField()
 
 class EnterValueSerializer(serializers.Serializer):
     question_type = serializers.CharField(default='text')
