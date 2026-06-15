@@ -1,7 +1,18 @@
 from rest_framework import serializers
 from polymorphic.contrib.drf.serializers import PolymorphicSerializer
 
-from .models import Quiz, Question, MultipleChoiceQuestion, EnterValueQuestion, AnswerOption, QuizContext, WithQuizContext, WithoutQuizContext
+from .models import (
+    Quiz,
+    Question,
+    MultipleChoiceQuestion,
+    EnterValueQuestion,
+    AnswerOption,
+    QuizContext,
+    WithQuizContext,
+    WithoutQuizContext,
+    QuizResults,
+    QuizAttempt,
+)
 
 
 class AnswerOptionSerializer(serializers.ModelSerializer):
@@ -80,7 +91,7 @@ class QuizSerializer(serializers.ModelSerializer):
             context_data = QuizContextSerializer(context).data
             questions = QuestionPolymorphicSerializer(context.questions.all(), many=True).data
 
-            if context_data['resourcetype'] is 'WithoutQuizContext':
+            if context_data['resourcetype'] == 'WithoutQuizContext':
                 blocks.append({'context': None, 'questions': questions})
             else:
                 del context_data['resourcetype']
@@ -116,3 +127,15 @@ class AnswerSerializer(serializers.Serializer):
 
 class QuizAttemptSerializer(serializers.Serializer):
     answers = AnswerSerializer(many=True)
+
+class QuizResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuizResults
+        fields= ("question", "answer", "correct_answer", "is_correct",)
+
+class UserResponseSerializer(serializers.ModelSerializer):
+    quizresults_set = QuizResultSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = QuizAttempt
+        fields = ("quizresults_set",)

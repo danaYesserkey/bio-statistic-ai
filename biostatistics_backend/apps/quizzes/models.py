@@ -44,3 +44,10 @@ class AnswerOption(models.Model):
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='answer_options')
     text = models.CharField(max_length=300, null=False)
     is_correct = models.BooleanField()
+
+class QuizResults(models.Model):
+    attempt = models.ForeignKey(QuizAttempt, on_delete=models.CASCADE)
+    question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    answer = models.JSONField()
+    correct_answer = models.JSONField()
+    is_correct = models.BooleanField(default=False)
