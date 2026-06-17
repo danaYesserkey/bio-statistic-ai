@@ -69,3 +69,6 @@ tmp/
 
 #deploy
 deploy/biostatistics.conf
+
+#static files
+static/
