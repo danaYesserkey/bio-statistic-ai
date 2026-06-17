@@ -1,16 +1,19 @@
 from django.core.cache import cache
-from django.shortcuts import get_object_or_404 # noqa
-from rest_framework import viewsets
-from rest_framework.decorators import api_view
+from django.shortcuts import get_object_or_404  # noqa
+from rest_framework import viewsets, status
+from rest_framework.decorators import api_view, action  # noqa
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import AllowAny
 
-from apps.courses.models import Course, Module, Lesson
+from apps.courses.models import Course, Module, Lesson, Content
 from apps.courses.serializers import (
-    CourseSerializer, 
-    CourseDetailSerializer, 
-    ModuleSerializer, 
+    CourseSerializer,
+    CourseDetailSerializer,
+    ModuleSerializer,
     LessonSerializer,
     LessonDetailSerializer,
+    ContentSerializer,
 )
 from apps.courses.permissions import IsAdminOrTeacherOrReadOnly
 
@@ -104,8 +107,57 @@ class LessonViewSet(viewsets.ModelViewSet):
         course_id = instance.module.course_id if instance.module else None
         instance.delete()
         invalidate_course_cache(course_id)
-    
+
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = LessonDetailSerializer(instance=instance)
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        serializer_class=ContentSerializer,
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def upload_file(self, request, pk=None):
+        """Эндпоинт для загрузки файла к конкретному уроку"""
+        lesson = self.get_object()
+
+        # request.data при multipart-запросах неизменяемый, делаем копию
+        serializer_data = (
+            request.data.dict()
+            if hasattr(request.data, "dict")
+            else request.data.copy()
+        )
+
+        # Жестко привязываем загружаемый файл к текущему уроку
+        serializer_data["lesson"] = lesson.id
+
+        # Если препод не передал порядковый номер (order), ставим в конец
+        if "order" not in serializer_data:
+            serializer_data["order"] = lesson.contents.count() + 1
+
+        serializer = ContentSerializer(data=serializer_data)
+
+        if serializer.is_valid():
+            serializer.save()
+
+            # Сбрасываем кэш курса, так как контент урока изменился
+            course_id = lesson.module.course_id if lesson.module else None
+            invalidate_course_cache(course_id)
+
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        serializer_class=ContentSerializer,
+        permission_classes=[AllowAny],
+    )
+    def contents(self, request, pk=None):
+        lesson = self.get_object()
+        contents = Content.objects.filter(lesson=lesson)  # noqa: F821
+        serializer = ContentSerializer(contents, many=True)
         return Response(serializer.data)

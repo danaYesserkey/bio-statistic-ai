@@ -1,5 +1,24 @@
+import os
+import uuid
+import mimetypes
+
+from django.utils.text import slugify
 from django.db import models
-from polymorphic.models import PolymorphicModel
+# from polymorphic.models import PolymorphicModel
+
+def get_course_file_upload_path(instance, filename):
+    """Генерирует уникальный путь для загрузки файлов"""
+    name, ext = os.path.splitext(filename)
+    safe_name = slugify(name) or "material"
+    unique_filename = f"{uuid.uuid4().hex[:10]}_{safe_name}{ext}"
+    
+    # Безопасно поднимаемся по связям: Урок -> Модуль -> Курс
+    lesson = instance.lesson
+    module = lesson.module if hasattr(lesson, 'module') else None
+    module_id = module.id if module else 'unknown'
+    course_id = module.course_id if (module and hasattr(module, 'course_id')) else 'unknown'
+    
+    return f"courses/course_{course_id}/modules/module_{module_id}/lessons/lesson_{lesson.id}/{unique_filename}"
 
 class Course(models.Model):
     # Оставляем имя поля как на схеме (course_name)
@@ -42,32 +61,32 @@ class Lesson(models.Model):
         return self.lesson_name
 
 
-class Content(PolymorphicModel):
-    lesson = models.ForeignKey(Lesson, related_name="contents", on_delete=models.CASCADE)
-    order = models.PositiveIntegerField(default=0, blank=False, null=False)
+class Content(models.Model):
+    lesson = models.ForeignKey('Lesson', related_name="contents", on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(default=0, verbose_name="Реттік нөмірі")
+    
+    # Одно поле для ВСЕХ файлов (pdf, docx, видео, картинки)
+    file = models.FileField(upload_to=get_course_file_upload_path, verbose_name="Файл")
+    
+    # Метаданные (заполняются сами при сохранении)
+    original_filename = models.CharField(max_length=255, editable=False, verbose_name="Түпнұсқа файл атауы")
+    file_size = models.PositiveBigIntegerField(editable=False, verbose_name="Файл өлшемі (байт)")
+    mime_type = models.CharField(max_length=100, editable=False, verbose_name="MIME-түрі")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Қосылған уақыты")
 
     class Meta:
         ordering = ['order']
+        verbose_name = "Контент"
+        verbose_name_plural = "Контенттер"
+
+    def save(self, *args, **kwargs):
+        # Собираем метаданные только при загрузке нового файла
+        if self.file and not self.pk:
+            self.original_filename = self.file.name
+            self.file_size = self.file.size
+            guessed_type, _ = mimetypes.guess_type(self.file.name)
+            self.mime_type = guessed_type or "application/octet-stream"
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.lesson} content"
-
-class TextContent(Content):
-    content = models.TextField()
-
-    def __str__(self):
-        if len(self.content) > 90:
-            return f"Мәтін - {self.content[:90]}..."
-        return f"Мәтін - {self.content}"
-
-class ImageContent(Content):
-    content_url = models.FileField(upload_to="suret/")
-
-    def __str__(self):
-        return f"Сурет - {self.content_url}"
-
-class VideoContent(Content):
-    content_url = models.FileField(upload_to="beine/")
-
-    def __str__(self):
-        return f"Бейне - {self.content_url}"
+        return f"Материал: {self.original_filename} (Урок: {self.lesson})"

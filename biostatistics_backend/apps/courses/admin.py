@@ -1,8 +1,7 @@
 from django.contrib import admin
-from polymorphic.admin import StackedPolymorphicInline, PolymorphicInlineSupportMixin
 from adminsortable2.admin import SortableStackedInline, SortableAdminBase
 
-from .models import Course, Module, Lesson, TextContent, ImageContent, VideoContent, Content
+from apps.courses.models import Course, Module, Lesson, Content
 from apps.quizzes.models import Quiz
 
 class ModuleInline(SortableStackedInline):
@@ -30,43 +29,25 @@ class ModuleAdmin(SortableAdminBase, admin.ModelAdmin):
     inlines = [LessonInline]
     fields = ('course', 'module_name',)
 
-# Content
-class ContentInline(StackedPolymorphicInline):
-    class TextContentInline(StackedPolymorphicInline.Child):
-        model = TextContent
-        fields = ('content',)
-    
-    class ImageContentInline(StackedPolymorphicInline.Child):
-        model = ImageContent
-        fields = ('content_url',)
-    
-    class VideoContentInline(StackedPolymorphicInline.Child):
-        model = VideoContent
-        fields = ('content_url',)
-    
-    model = Content
-    child_inlines = (
-        TextContentInline,
-        ImageContentInline,
-        VideoContentInline,
-    )
 
-class ContentOrderInline(SortableStackedInline):
+# --- МАТЕРИАЛЫ УРОКА (Вместо старых полиморфных инлайнов) ---
+class ContentInline(SortableStackedInline):
     model = Content
     extra = 0
-    can_delete = False
-    verbose_name_plural = 'Content order'
+    # Поля, которые препод будет видеть/заполнять при добавлении файла прямо в уроке
+    fields = ('file', 'order', 'original_filename', 'file_size', 'mime_type')
+    # Метаданные защищаем от редактирования руками
+    readonly_fields = ('original_filename', 'file_size', 'mime_type')
 
-    def has_add_permission(self, request, obj=None):
-        return False
 
 class QuizInline(admin.TabularInline):
     model = Quiz
     extra = 0
     show_change_link = True
 
+
 @admin.register(Lesson)
-class LessonAdmin(SortableAdminBase, PolymorphicInlineSupportMixin, admin.ModelAdmin):
+class LessonAdmin(SortableAdminBase, admin.ModelAdmin):
     list_display = ('id', 'lesson_name', 'module', 'order')
     
     fieldsets = (
@@ -75,4 +56,4 @@ class LessonAdmin(SortableAdminBase, PolymorphicInlineSupportMixin, admin.ModelA
         }),
     )
 
-    inlines = (QuizInline, ContentOrderInline, ContentInline,)
+    inlines = (QuizInline, ContentInline)
