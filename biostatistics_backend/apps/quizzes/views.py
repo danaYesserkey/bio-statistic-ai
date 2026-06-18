@@ -1,5 +1,5 @@
 from django.shortcuts import get_object_or_404
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -8,17 +8,34 @@ from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 
 from .serializers import QuizSerializer, QuizAttemptSerializer, UserResponseSerializer
-from .models import Quiz, Question, MultipleChoiceQuestion, EnterValueQuestion, AnswerOption, QuizAttempt, QuizResults
+from .models import Quiz, Question, MultipleChoiceQuestion, EnterValueQuestion, AnswerOption, QuizAttempt, QuizResults, BirnesheJauaptyqSuraq
 from apps.courses.models import Lesson
 from apps.users.models import CustomUser
 
+from drf_spectacular.utils import extend_schema
+from .docs_example import (
+    FIRST_ATTEMPT_EXAMPLE,
+    LAST_ATTEMPT_EXAMPLE,
+    QUIZ_SUBMIT_REQUEST_SCHEMA,
+    QUIZ_SUBMIT_RESPONSE_SCHEMA,
+    LESSON_RESPONSE_SCHEMA,
+    QUIZ_SUBMIT_EXAMPLE,
+    QUIZ_RESULT_EXAMPLE,
+)
 
+
+@extend_schema(
+    responses={200: LESSON_RESPONSE_SCHEMA},
+    examples=[FIRST_ATTEMPT_EXAMPLE, LAST_ATTEMPT_EXAMPLE],
+)
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def lesson_quiz(request, id):
     lesson = get_object_or_404(Lesson, id=id)
 
     quiz = get_object_or_404(Quiz, lesson_id=lesson.id)
-    quiz_serializer = QuizSerializer(quiz)
+    questions_count = quiz.questions.count()
+    quiz_serializer = QuizSerializer(quiz, context={'questions': questions_count})
 
     try:
         user = CustomUser.objects.get(id=request.user.id)
@@ -26,6 +43,13 @@ def lesson_quiz(request, id):
         result_serializer = UserResponseSerializer(last_attempt)
     finally:
         if last_attempt:
+            quiz_serializer = QuizSerializer(quiz, context={
+                'status': last_attempt.passed,
+                'questions': questions_count,
+                'score': last_attempt.score,
+                'score_percentage': (last_attempt.score * 100) / questions_count
+            })
+
             for i in range(len(quiz_serializer.data["blocks"])):
                 for j in range(len(quiz_serializer.data["blocks"][i]["questions"])):
                     question_id = quiz_serializer.data["blocks"][i]["questions"][j]["id"]
@@ -35,7 +59,6 @@ def lesson_quiz(request, id):
                         quiz_serializer.data["blocks"][i]["questions"][j]["user_answer"] = choice["answer"]
                         quiz_serializer.data["blocks"][i]["questions"][j]["is_correct"] = choice["is_correct"]
                         quiz_serializer.data["blocks"][i]["questions"][j]["correct_answer"] = choice["correct_answer"]
-            # quiz_serializer.data["passed"] = last_attempt.passed
             
     return Response(quiz_serializer.data)
 
@@ -43,6 +66,11 @@ def lesson_quiz(request, id):
 class QuizSubmitCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        request={'application/json': QUIZ_SUBMIT_REQUEST_SCHEMA},
+        responses={200: QUIZ_SUBMIT_RESPONSE_SCHEMA},
+        examples=[QUIZ_SUBMIT_EXAMPLE, QUIZ_RESULT_EXAMPLE],
+    )
     def post(self, request, quiz_id):
         quiz = get_object_or_404(Quiz, id=quiz_id)
 
@@ -51,10 +79,18 @@ class QuizSubmitCreateView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
         
+        user = get_object_or_404(CustomUser, id=request.user.id)
+
+        try:
+            completed_quiz = QuizAttempt.objects.filter(quiz=quiz, user=user, passed=True)
+        finally:
+            if completed_quiz:
+                return Response({"message": "Successfully passed quiz before"})
+
         answers = serializer.validated_data['answers']
         question_ids = [ans['question_id'] for ans in answers]
         valid_questions = Question.objects.filter(
-            quiz_id=quiz_id, id__in=question_ids
+            quiz_id=quiz_id
         ).values_list('id', flat=True)
 
         if len(valid_questions) != len(set(question_ids)):
@@ -66,13 +102,11 @@ class QuizSubmitCreateView(APIView):
         if score_percentage >= 90:
             passed = True
 
-        user = get_object_or_404(CustomUser, id=request.user.id)
-
         with transaction.atomic():
             attempt = QuizAttempt.objects.create(
                 user=user,
                 quiz=quiz,
-                score=score_percentage,
+                score=score,
                 passed=passed,
                 completed_at=timezone.now()
             )
@@ -92,11 +126,10 @@ class QuizSubmitCreateView(APIView):
         QuizResults.objects.bulk_create(user_results)
 
         return Response({
-            "id": attempt.id,
             "quiz": attempt.quiz_id,
             "total_questions": len(valid_questions),
             "score": score,
-            "score_percentage": attempt.score,
+            "score_percentage": score_percentage,
             "completed_at": attempt.completed_at,
             "passed": attempt.passed,
             "results": results,
@@ -114,11 +147,14 @@ class QuizSubmitCreateView(APIView):
             question = get_object_or_404(Question, id=question_id, quiz_id=quiz_id)
 
             if question_type == 'mcq':
-                is_correct, points, correct_answer = self._score_mcq(question, answer['selected_choice'])
-                user_response = answer['selected_choice']
+                is_correct, points, correct_answer = self._score_mcq(question, answer['user_answer'])
+                user_response = answer['user_answer']
+            elif question_type == 'birneshe':
+                is_correct, points, correct_answer = self._score_birneshe_jauaptyq(question, answer['user_answer'])
+                user_response = answer['user_answer']
             elif question_type == 'text':
-                is_correct, points, correct_answer = self._score_text(question, answer['text_response'])
-                user_response = answer['text_response']
+                is_correct, points, correct_answer = self._score_text(question, answer['user_answer'])
+                user_response = answer['user_answer']
             else:
                 is_correct, points, correct_answer = False, 0, None
                 user_response = None
@@ -151,6 +187,26 @@ class QuizSubmitCreateView(APIView):
         
         return is_correct, points, correct_option.id
     
+    def _score_birneshe_jauaptyq(self, question, selected_choices):
+        if not isinstance(question, BirnesheJauaptyqSuraq):
+            return False, 0, None
+        
+        correct_options = set(
+            AnswerOption.objects.filter(
+                question_id=question.id,
+                is_correct=True
+            ).values_list('id', flat=True)
+        )
+
+        selected_set = set(selected_choices)
+        is_correct = selected_set == correct_options
+        if is_correct:
+            points = 1
+        else:
+            points = 0
+        
+        return is_correct, points, list(correct_options)
+
     def _score_text(self, question, text_response):
         if not isinstance(question, EnterValueQuestion):
             return False, 0, None
@@ -159,3 +215,15 @@ class QuizSubmitCreateView(APIView):
         points = 1 if is_correct else 0
         
         return is_correct, points, question.correct_value
+
+
+@api_view(['POST'])
+def reset_quiz(request, id):
+    quiz = get_object_or_404(Quiz, id=id)
+    user = get_object_or_404(CustomUser, id=request.user.id)
+
+    try:
+        QuizAttempt.objects.filter(user=user, quiz=quiz).delete()
+        return Response({"message": "quiz reseted!"})
+    except Exception as e:
+        return Response({"error": e})

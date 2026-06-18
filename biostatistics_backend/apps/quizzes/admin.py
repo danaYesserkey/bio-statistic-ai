@@ -10,9 +10,9 @@ from .models import (
     WithQuizContext,
     WithoutQuizContext,
     MultipleChoiceQuestion,
+    BirnesheJauaptyqSuraq,
     EnterValueQuestion,
     AnswerOption,
-    QuizAttempt,
 )
 
 
@@ -24,6 +24,12 @@ class AnswerOptionInline(NestedTabularInline):
 
 class MultipleChoiceInline(NestedStackedInline):
     model = MultipleChoiceQuestion
+    extra = 0
+    fields = ('text',)
+    inlines = [AnswerOptionInline]
+
+class BirnesheJauaptyqInline(NestedStackedInline):
+    model = BirnesheJauaptyqSuraq
     extra = 0
     fields = ('text',)
     inlines = [AnswerOptionInline]
@@ -71,11 +77,9 @@ class QuestionInline(NestedStackedInline):
 
 @admin.register(WithQuizContext)
 class WithContextAdmin(NestedModelAdmin):
-    inlines = [MultipleChoiceInline, EnterValueInline]
+    inlines = [MultipleChoiceInline, BirnesheJauaptyqInline, EnterValueInline]
 
 @admin.register(WithoutQuizContext)
 class WithoutContextAdmin(NestedModelAdmin):
-    inlines = [MultipleChoiceInline, EnterValueInline]
+    inlines = [MultipleChoiceInline, BirnesheJauaptyqInline, EnterValueInline]
     readonly_fields = ('quiz',)
-
-admin.site.register(QuizAttempt)

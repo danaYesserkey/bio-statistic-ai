@@ -37,6 +37,9 @@ class Question(PolymorphicModel):
 class MultipleChoiceQuestion(Question):
     pass
 
+class BirnesheJauaptyqSuraq(Question):
+    pass
+
 class EnterValueQuestion(Question):
     correct_value = models.CharField(max_length=70, null=False)
 

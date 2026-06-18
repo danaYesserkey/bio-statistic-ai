@@ -12,6 +12,7 @@ from .models import (
     WithoutQuizContext,
     QuizResults,
     QuizAttempt,
+    BirnesheJauaptyqSuraq,
 )
 
 
@@ -32,6 +33,13 @@ class MultipChoiceSerializer(serializers.ModelSerializer):
         model = MultipleChoiceQuestion
         fields = ('id', 'text', 'answer_options',)
 
+class BirnesheJauaptyqSerializer(serializers.ModelSerializer):
+    answer_options = AnswerOptionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = BirnesheJauaptyqSuraq
+        fields = ('id', 'text', 'answer_options')
+
 class EnterValueSerializer(serializers.ModelSerializer):
     class Meta:
         model = EnterValueQuestion
@@ -42,6 +50,7 @@ class QuestionPolymorphicSerializer(PolymorphicSerializer):
     model_serializer_mapping = {
         Question: QuestionSerializer,
         MultipleChoiceQuestion: MultipChoiceSerializer,
+        BirnesheJauaptyqSuraq: BirnesheJauaptyqSerializer,
         EnterValueQuestion: EnterValueSerializer,
     }
 
@@ -52,6 +61,8 @@ class QuestionPolymorphicSerializer(PolymorphicSerializer):
             return "mcq"
         elif name == "entervaluequestion":
             return "text"
+        elif name == "birneshejauaptyqsuraq":
+            return "birneshe"
 
         return name
 
@@ -79,11 +90,33 @@ class QuizContextSerializer(PolymorphicSerializer):
 
 class QuizSerializer(serializers.ModelSerializer):
     blocks = serializers.SerializerMethodField()
+    passed = serializers.SerializerMethodField()
+    total_questions = serializers.SerializerMethodField()
+    score = serializers.SerializerMethodField()
+    score_percentage = serializers.SerializerMethodField()
 
     class Meta:
         model = Quiz
         fields = '__all__'
     
+    def get_passed(self, obj):
+        status = self.context.get('status')
+        if status == True:
+            return True
+        return False
+    
+    def get_total_questions(self, obj):
+        questions = self.context.get('questions')
+        return questions
+    
+    def get_score(self, obj):
+        score = self.context.get('score')
+        return score
+    
+    def get_score_percentage(self, obj):
+        score_percentage = self.context.get('score_percentage')
+        return score_percentage
+
     def get_blocks(self, obj):
         blocks = []
 
@@ -102,12 +135,17 @@ class QuizSerializer(serializers.ModelSerializer):
 class MCQAnswerSerializer(serializers.Serializer):
     question_type = serializers.CharField(default='mcq')
     question_id = serializers.IntegerField()
-    selected_choice = serializers.IntegerField()
+    user_answer = serializers.IntegerField()
 
-class EnterValueSerializer(serializers.Serializer):
+class BirnesheJauaptyqAnswerSerializer(serializers.Serializer):
+    question_type = serializers.CharField(default="birneshe")
+    question_id = serializers.IntegerField()
+    user_answer = serializers.ListField(child=serializers.IntegerField())
+
+class EnterValueAnswerSerializer(serializers.Serializer):
     question_type = serializers.CharField(default='text')
     question_id = serializers.IntegerField()
-    text_response = serializers.CharField()
+    user_answer = serializers.CharField()
 
 class AnswerSerializer(serializers.Serializer):
     def to_internal_value(self, data):
@@ -116,7 +154,9 @@ class AnswerSerializer(serializers.Serializer):
         if answer_type == 'mcq':
             serializer = MCQAnswerSerializer(data=data)
         elif answer_type == 'text':
-            serializer = EnterValueSerializer(data=data)
+            serializer = EnterValueAnswerSerializer(data=data)
+        elif answer_type == 'birneshe':
+            serializer = BirnesheJauaptyqAnswerSerializer(data=data)
         else:
             raise serializers.ValidationError(f"Invalid type: {answer_type}")
         
