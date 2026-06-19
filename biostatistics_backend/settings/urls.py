@@ -42,6 +42,7 @@ urlpatterns = [
     # 2. Этот эндпоинт рендерит саму красивую веб-страницу Swagger UI.
     # В url_name='schema' мы передаем имя пути из строчки выше, чтобы Swagger знал, откуда качать JSON-схему
     path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path("api/ai/", include("apps.ai.urls")),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
