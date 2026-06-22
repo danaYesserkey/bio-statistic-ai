@@ -16,6 +16,8 @@ from apps.courses.serializers import (
     ContentSerializer,
 )
 from apps.courses.permissions import IsAdminOrTeacherOrReadOnly
+from apps.stats.models import CourseStatistics
+from apps.users.models import CustomUser
 
 
 # Выносим логику очистки в хелпер, так как курс может измениться через Модуль или Урок
@@ -111,6 +113,31 @@ class LessonViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = LessonDetailSerializer(instance=instance)
+
+        try:
+            user = CustomUser.objects.get(id=request.user.id)
+        except Exception as e:
+            return Response(serializer.data)
+
+        try:
+            # user = CustomUser.objects.get(id=request.user.id)
+            previous_lesson = Lesson.objects.filter(id__lt=instance.id).order_by('-id').first()
+            statistics = CourseStatistics.objects.get(lesson=previous_lesson, user=user, course=previous_lesson.module.course)
+
+            print(statistics)
+            print(previous_lesson)
+
+            if previous_lesson:
+                if not statistics.completed:
+                    return Response({"has_access": False})
+        except Exception as e:
+            print(e)
+            if not previous_lesson:
+                print('first attempt!')
+                return Response(serializer.data)
+            else:
+                return Response({"has_access": False})
+        
         return Response(serializer.data)
 
     @action(

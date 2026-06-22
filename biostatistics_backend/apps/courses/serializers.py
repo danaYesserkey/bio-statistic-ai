@@ -69,7 +69,8 @@ class ContentSerializer(serializers.ModelSerializer):
 
 class LessonDetailSerializer(serializers.ModelSerializer):
     contents = ContentSerializer(many=True, read_only=True)
+    has_access = serializers.BooleanField(default=True)
 
     class Meta:
         model = Lesson
-        fields = ["id", "module", "lesson_name", "order", "contents"]
+        fields = ["id", "module", "lesson_name", "order", "contents", "has_access"]
