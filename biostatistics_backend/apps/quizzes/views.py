@@ -11,6 +11,7 @@ from .serializers import QuizSerializer, QuizAttemptSerializer, UserResponseSeri
 from .models import Quiz, Question, MultipleChoiceQuestion, EnterValueQuestion, AnswerOption, QuizAttempt, QuizResults, BirnesheJauaptyqSuraq
 from apps.courses.models import Lesson
 from apps.users.models import CustomUser
+from apps.stats.models import CourseStatistics
 
 from drf_spectacular.utils import extend_schema
 from .docs_example import (
@@ -101,6 +102,12 @@ class QuizSubmitCreateView(APIView):
         score_percentage = (score * 100) / len(valid_questions)
         if score_percentage >= 90:
             passed = True
+            course = quiz.lesson.module.course
+            module = quiz.lesson.module
+            try:
+                CourseStatistics.objects.create(lesson=quiz.lesson, course=course, module=module, user=user, completed=True)
+            except Exception as e:
+                print(e)
 
         with transaction.atomic():
             attempt = QuizAttempt.objects.create(
