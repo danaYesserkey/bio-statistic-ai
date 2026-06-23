@@ -6,7 +6,7 @@ urlpatterns = [
 ]
 
 
-# cd /Users/yesserkeydana/Desktop/bio-statistic-ai/biostatistics_backend
+# cd /Users/yesserkeydana/Desktop/gith/bio-statistic-ai/biostatistics_backend
 
 # source venv/bin/activate
 

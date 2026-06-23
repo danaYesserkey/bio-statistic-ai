@@ -16,8 +16,10 @@ const DEFAULT_PROFILE = {
 const MODULES = [
   {
     id: "data_types",
+    lessonId: 1, // Change 1 only if the Lesson ID in Django Admin is different.
     title: "1-модуль: Деректер түрлері",
     description: "",
+    test: true,
   },
 ];
 
@@ -74,12 +76,19 @@ function App() {
       role: "assistant",
       content:
         "Сәлеметсіз бе! Биостатистика бойынша сұрағыңызды жазыңыз. Мен материалдарға сүйеніп, түсінікті жауап беремін.",
-      time: "09:00",
     },
   ]);
   const [input, setInput] = useState("");
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Quiz state: the questions and scoring come from Django.
+  const [activeQuiz, setActiveQuiz] = useState(null);
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [quizError, setQuizError] = useState("");
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [quizAnswers, setQuizAnswers] = useState({});
+  const [pendingQuiz, setPendingQuiz] = useState(null);
 
   const fileInputRef = useRef(null);
   const chatEndRef = useRef(null);
@@ -108,29 +117,28 @@ function App() {
     setPage("login");
   };
 
-  const sendMessage = async () => {
-    const text = input.trim();
-    if ((!text && attachedFiles.length === 0) || loading) return;
+  const getApiHeaders = () => {
+    const token = auth.access || localStorage.getItem("access") || "";
+    const headers = { "Content-Type": "application/json" };
 
-    const fileSummary = attachedFiles.length
-      ? "\n\nТіркелген файлдар: " +
-        attachedFiles
-          .map((file) => `${file.name} (${file.type || "unknown"})`)
-          .join(", ")
-      : "";
+    if (token && !token.startsWith("local-")) {
+      headers.Authorization = `Bearer ${token}`;
+    }
 
+    return headers;
+  };
+
+  const sendChatMessage = async ({ content, apiContent = content, files = [] }) => {
     const userMessage = {
       role: "user",
-      content: text || "Файл тіркелді.",
-      apiContent: (text || "Студент файл тіркеді.") + fileSummary,
-      files: attachedFiles,
+      content,
+      apiContent,
+      files,
       time: nowTime(),
     };
 
     const nextMessages = [...messages, userMessage];
     setMessages(nextMessages);
-    setInput("");
-    setAttachedFiles([]);
     setLoading(true);
 
     try {
@@ -138,7 +146,7 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextMessages.map((msg) => ({
+          messages: nextMessages.slice(-12).map((msg) => ({
             role: msg.role,
             content: msg.apiContent || msg.content,
           })),
@@ -152,17 +160,13 @@ function App() {
         data.error ||
         "AI жауап бере алмады. Backend немесе API лимитін тексеріңіз.";
 
-      setMessages([
-        ...nextMessages,
-        {
-          role: "assistant",
-          content: assistantText,
-          time: nowTime(),
-        },
+      setMessages((previous) => [
+        ...previous,
+        { role: "assistant", content: assistantText, time: nowTime() },
       ]);
     } catch (error) {
-      setMessages([
-        ...nextMessages,
+      setMessages((previous) => [
+        ...previous,
         {
           role: "assistant",
           content:
@@ -174,6 +178,232 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const sendMessage = async () => {
+    const text = input.trim();
+
+    if ((!text && attachedFiles.length === 0) || loading) return;
+
+    const files = attachedFiles;
+    const fileSummary = files.length
+      ? "\n\nТіркелген файлдар: " +
+        files.map((file) => `${file.name} (${file.type || "unknown"})`).join(", ")
+      : "";
+
+    setInput("");
+    setAttachedFiles([]);
+
+    await sendChatMessage({
+      content: text || "Файл тіркелді.",
+      apiContent: (text || "Студент файл тіркеді.") + fileSummary,
+      files,
+    });
+  };
+
+  const getQuestionText = (question) =>
+    question?.text || question?.question || "Сұрақ жүктелмеді.";
+
+  const getQuestionOptions = (question) => {
+    const rawOptions =
+      question?.answer_options ||
+      question?.options ||
+      question?.answers ||
+      [];
+
+    return rawOptions.map((option, index) => ({
+      id: typeof option === "string" ? index : option?.id ?? index,
+      text:
+        typeof option === "string"
+          ? option
+          : option?.text || option?.label || String(option ?? ""),
+    }));
+  };
+
+  const getQuizQuestions = (quiz) =>
+    (quiz?.blocks || []).flatMap((block) => block.questions || []);
+
+  const startModuleQuiz = async (module) => {
+    setPage("quiz");
+    setQuizLoading(true);
+    setQuizError("");
+    setActiveQuiz({ module, quiz: null, questions: [] });
+    setCurrentQuestionIndex(0);
+    setQuizAnswers({});
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/lessons/${module.lessonId}/quiz/`,
+        { headers: getApiHeaders() }
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail ||
+            data.error ||
+            `Quiz жүктелмеді. Lesson ID: ${module.lessonId}`
+        );
+      }
+
+      const questions = getQuizQuestions(data);
+
+      if (!questions.length) {
+        throw new Error("Бұл сабаққа quiz сұрақтары әлі қосылмаған.");
+      }
+
+      setActiveQuiz({ module, quiz: data, questions });
+    } catch (error) {
+      setQuizError(error.message);
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const setQuizAnswer = (question, value) => {
+    setQuizAnswers((previous) => ({
+      ...previous,
+      [question.id]: value,
+    }));
+  };
+
+  const answerTextForChat = (question, answer) => {
+    if (Array.isArray(answer)) {
+      return getQuestionOptions(question)
+        .filter((option) => answer.includes(option.id))
+        .map((option) => option.text)
+        .join(", ");
+    }
+
+    const option = getQuestionOptions(question).find(
+      (item) => String(item.id) === String(answer)
+    );
+
+    return option?.text || String(answer ?? "");
+  };
+
+  const discussWrongQuizAnswer = async (question, answer, canReturnToQuiz) => {
+    const visibleText =
+      `Мен модуль тестінде қате жауап бердім. Мен таңдаған жауап: "` +
+      `${answerTextForChat(question, answer)}".`;
+
+    setPendingQuiz(
+      canReturnToQuiz
+        ? { moduleId: activeQuiz?.module?.id, moduleTitle: activeQuiz?.module?.title }
+        : null
+    );
+
+    setPage("practice");
+    await sendChatMessage({
+      content: visibleText,
+      apiContent: visibleText,
+    });
+  };
+
+  const submitQuizAttempt = async () => {
+    if (!activeQuiz?.quiz || quizLoading) return;
+
+    const questions = activeQuiz.questions || [];
+    const unanswered = questions.find((question) => {
+      const value = quizAnswers[question.id];
+      return value === undefined || value === null || value === "" ||
+        (Array.isArray(value) && value.length === 0);
+    });
+
+    if (unanswered) {
+      setQuizError("Барлық сұраққа жауап беріңіз.");
+      return;
+    }
+
+    const answers = questions.map((question) => ({
+      question_type: question.question_type || "mcq",
+      question_id: question.id,
+      user_answer: quizAnswers[question.id],
+    }));
+
+    setQuizLoading(true);
+    setQuizError("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/quizzes/${activeQuiz.quiz.id}/submit/`,
+        {
+          method: "POST",
+          headers: getApiHeaders(),
+          body: JSON.stringify({ answers }),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "Quiz нәтижесі сақталмады.");
+      }
+
+      if (data.message === "Successfully passed quiz before") {
+        setPage("course");
+        return;
+      }
+
+      const score = Number(data.score_percentage ?? 0);
+      const currentProgress = courseProgress[activeQuiz.module.id] || {};
+
+      saveCourseProgress({
+        ...courseProgress,
+        [activeQuiz.module.id]: {
+          ...currentProgress,
+          testPassed: Boolean(data.passed),
+          quizScores: [...(currentProgress.quizScores || []), score],
+        },
+      });
+
+      const wrongResult = (data.results || []).find((item) => !item.is_correct);
+
+      if (wrongResult) {
+        const wrongQuestion = questions.find(
+          (question) => question.id === wrongResult.question_id
+        );
+
+        await discussWrongQuizAnswer(
+          wrongQuestion || questions[0],
+          wrongResult.user_answer,
+          !data.passed
+        );
+        return;
+      }
+
+      setPendingQuiz(null);
+      setPage("course");
+    } catch (error) {
+      setQuizError(error.message);
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const goToNextQuizQuestion = () => {
+    const questions = activeQuiz?.questions || [];
+    const question = questions[currentQuestionIndex];
+    const answer = quizAnswers[question?.id];
+
+    if (
+      answer === undefined ||
+      answer === null ||
+      answer === "" ||
+      (Array.isArray(answer) && answer.length === 0)
+    ) {
+      setQuizError("Жауапты таңдаңыз.");
+      return;
+    }
+
+    setQuizError("");
+
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex((value) => value + 1);
+      return;
+    }
+
+    submitQuizAttempt();
   };
 
   const handleKeyDown = (event) => {
@@ -236,10 +466,23 @@ function App() {
             modules={MODULES}
             openedModules={openedModules}
             courseProgress={courseProgress}
-            saveCourseProgress={saveCourseProgress}
+            startModuleQuiz={startModuleQuiz}
             toggleModule={(id) =>
               setOpenedModules((prev) => ({ ...prev, [id]: !prev[id] }))
             }
+          />
+        )}
+
+        {page === "quiz" && (
+          <QuizPage
+            activeQuiz={activeQuiz}
+            quizLoading={quizLoading}
+            quizError={quizError}
+            currentQuestionIndex={currentQuestionIndex}
+            quizAnswers={quizAnswers}
+            setQuizAnswer={setQuizAnswer}
+            goToNextQuizQuestion={goToNextQuizQuestion}
+            backToCourse={() => setPage("course")}
           />
         )}
 
@@ -259,6 +502,8 @@ function App() {
             openFilePicker={() => fileInputRef.current?.click()}
             quickAsk={quickAsk}
             chatEndRef={chatEndRef}
+            pendingQuiz={pendingQuiz}
+            returnToQuiz={() => setPage("quiz")}
           />
         )}
 
@@ -318,7 +563,7 @@ function HomePage({ profile, setPage, quickAsk }) {
       <div className="page-heading home-heading">
         <p className="page-kicker">BioStat · ҚазҰМУ</p>
         <h1>Қош келдіңіз, {profile.full_name || "студент"}!</h1>
-        <p className="page-subtitle">Биостатистиканы өз қарқыныңызбен үйреніңіз</p>
+        <p className="page-subtitle"></p>
       </div>
 
       <div className="home-three-grid">
@@ -419,7 +664,13 @@ function getCourseStats(modules, courseProgress) {
   };
 }
 
-function CoursePage({ modules, openedModules, toggleModule, courseProgress }) {
+function CoursePage({
+  modules,
+  openedModules,
+  toggleModule,
+  courseProgress,
+  startModuleQuiz,
+}) {
   return (
     <section className="page-shell course-page-shell">
       <div className="page-heading">
@@ -430,6 +681,7 @@ function CoursePage({ modules, openedModules, toggleModule, courseProgress }) {
       <div className="course-layout">
         {modules.map((module) => {
           const stats = getModuleStats(module, courseProgress);
+
           return (
             <article className="course-module" key={module.id}>
               <button
@@ -438,11 +690,25 @@ function CoursePage({ modules, openedModules, toggleModule, courseProgress }) {
                 onClick={() => toggleModule(module.id)}
               >
                 <div>
-                  <span className="course-chevron">{openedModules[module.id] ? "⌄" : "›"}</span>
+                  <span className="course-chevron">
+                    {openedModules[module.id] ? "⌄" : "›"}
+                  </span>
                   <h2>{module.title}</h2>
                 </div>
                 <strong>{stats.percent}%</strong>
               </button>
+
+              {openedModules[module.id] && (
+                <div className="course-module-body">
+                  <button
+                    type="button"
+                    className="quiz-start-button"
+                    onClick={() => startModuleQuiz(module)}
+                  >
+                    Модуль тестін бастау
+                  </button>
+                </div>
+              )}
             </article>
           );
         })}
@@ -451,6 +717,102 @@ function CoursePage({ modules, openedModules, toggleModule, courseProgress }) {
   );
 }
 
+function QuizPage({
+  activeQuiz,
+  quizLoading,
+  quizError,
+  currentQuestionIndex,
+  quizAnswers,
+  setQuizAnswer,
+  goToNextQuizQuestion,
+  backToCourse,
+}) {
+  const questions = activeQuiz?.questions || [];
+  const question = questions[currentQuestionIndex];
+  const questionType = question?.question_type || "mcq";
+  const options = question ? getQuestionOptions(question) : [];
+  const selectedAnswer = question ? quizAnswers[question.id] : undefined;
+  const isLastQuestion = currentQuestionIndex === questions.length - 1;
+
+  const toggleMultipleOption = (optionId) => {
+    const previous = Array.isArray(selectedAnswer) ? selectedAnswer : [];
+    const next = previous.includes(optionId)
+      ? previous.filter((id) => id !== optionId)
+      : [...previous, optionId];
+    setQuizAnswer(question, next);
+  };
+
+  return (
+    <section className="page-shell quiz-page-shell">
+      <div className="quiz-top-row">
+        <button type="button" className="back-button" onClick={backToCourse}>
+          ← Курсқа оралу
+        </button>
+        <span>{questions.length ? `${currentQuestionIndex + 1} / ${questions.length}` : ""}</span>
+      </div>
+
+      <div className="page-heading">
+        <p className="page-kicker">Модуль тесті</p>
+        <h1>{activeQuiz?.module?.title || "Quiz"}</h1>
+      </div>
+
+      {quizLoading && <div className="quiz-card">Quiz жүктеліп жатыр...</div>}
+
+      {!quizLoading && quizError && (
+        <div className="quiz-card quiz-error">
+          <p>{quizError}</p>
+        </div>
+      )}
+
+      {!quizLoading && question && (
+        <article className="quiz-card">
+          <p className="quiz-question">{getQuestionText(question)}</p>
+
+          {questionType === "text" ? (
+            <input
+              className="quiz-text-input"
+              value={selectedAnswer || ""}
+              onChange={(event) => setQuizAnswer(question, event.target.value)}
+              placeholder="Жауапты жазыңыз"
+            />
+          ) : (
+            <div className="quiz-options">
+              {options.map((option) => {
+                const isMultiple = questionType === "birneshe";
+                const selected = isMultiple
+                  ? Array.isArray(selectedAnswer) && selectedAnswer.includes(option.id)
+                  : selectedAnswer === option.id;
+
+                return (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={selected ? "selected" : ""}
+                    onClick={() =>
+                      isMultiple
+                        ? toggleMultipleOption(option.id)
+                        : setQuizAnswer(question, option.id)
+                    }
+                  >
+                    {isMultiple ? (selected ? "✓ " : "□ ") : ""}{option.text}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="quiz-submit-button"
+            onClick={goToNextQuizQuestion}
+          >
+            {isLastQuestion ? "Тестті аяқтау" : "Келесі сұрақ"}
+          </button>
+        </article>
+      )}
+    </section>
+  );
+}
 
 function PracticePage({
   profile,
@@ -465,6 +827,8 @@ function PracticePage({
   openFilePicker,
   quickAsk,
   chatEndRef,
+  pendingQuiz,
+  returnToQuiz,
 }) {
   const studentInitials = getInitials(profile.full_name || "Студент");
 
@@ -474,8 +838,6 @@ function PracticePage({
         <span className="sidebar-label">AI MODE</span>
         <h2>AI көмекші</h2>
         <p>
-          Сұрағыңызды жазыңыз. AI биостатистика материалдарына сүйеніп жауап
-          береді.
         </p>
 
         <button type="button" onClick={() => quickAsk("Деректер түрлері деген не?")}>
@@ -490,13 +852,19 @@ function PracticePage({
         <button type="button" onClick={openFilePicker}>
           Файл тіркеу
         </button>
+
+        {pendingQuiz && (
+          <button type="button" className="return-quiz-button" onClick={returnToQuiz}>
+            Тестке оралу
+          </button>
+        )}
       </aside>
 
       <section className="chat-workspace">
         <header className="chat-header">
           <div>
             <h1>AI чат</h1>
-            <p>Биостатистика бойынша нақты әрі түсінікті жауап береді.</p>
+            <p></p>
           </div>
         </header>
 
@@ -602,65 +970,92 @@ function ProfilePage({ profile, setPage, modules, courseProgress }) {
 
   return (
     <section className="page-shell profile-page-shell">
-      <div className="page-heading">
-        <p className="page-kicker">Профиль</p>
-        <h1>Профиль және оқу прогресі</h1>
+      <div className="profile-page-header">
+        <div>
+          <p className="profile-overline">Профиль</p>
+          <h1>Профиль және оқу прогресі</h1>
+          <p></p>
+        </div>
       </div>
 
-      <article className="profile-card profile-card-wide">
-        <div className="profile-avatar">{getInitials(profile.full_name)}</div>
-        <div className="profile-main">
-          <div className="profile-name-row">
+      <div className="profile-dashboard-grid">
+        <article className="student-profile-card">
+          <div className="student-profile-card__head">
+            <div className="profile-avatar">{getInitials(profile.full_name)}</div>
             <div>
               <h2>{profile.full_name || "Студент"}</h2>
-              <p>{profile.email || "—"}</p>
+              <p>{profile.email || "email енгізілмеген"}</p>
             </div>
-            <button type="button" onClick={() => setPage("course")}>Курсқа өту</button>
           </div>
 
-          <div className="profile-table">
-            {rows.map(([label, value]) => (
+          <div className="student-profile-table">
+            {rows.slice(2).map(([label, value]) => (
               <div key={label}>
                 <span>{label}</span>
                 <strong>{value || "—"}</strong>
               </div>
             ))}
           </div>
-        </div>
-      </article>
 
-      <div className="profile-stats-row">
-        <aside className="progress-summary-card">
-          <span>Оқу прогресі</span>
+          <button type="button" onClick={() => setPage("course")}>
+            Оқуды жалғастыру
+          </button>
+        </article>
+
+        <article className="profile-metric-card profile-metric-card--blue">
+          <span>Жалпы прогресс</span>
           <strong>{stats.totalPercent}%</strong>
-          <p>{stats.completedModules}/{stats.totalModules} модуль</p>
-          <div className="summary-bar"><i style={{ width: `${stats.totalPercent}%` }} /></div>
-        </aside>
+          <div className="profile-metric-bar">
+            <i style={{ width: `${stats.totalPercent}%` }} />
+          </div>
+        </article>
 
-        <aside className="average-score-card">
+        <article className="profile-metric-card profile-metric-card--green">
           <span>Орташа балл</span>
           <strong>{scoreText}</strong>
-          <p>{stats.quizCount ? `${stats.quizCount} quiz` : "Quiz нәтижесі жоқ"}</p>
-        </aside>
+          <p>{stats.quizCount ? `${stats.quizCount} quiz тапсырылды` : "Quiz нәтижесі жоқ"}</p>
+        </article>
+
+        <article className="profile-metric-card profile-metric-card--plain">
+          <span>Аяқталған модульдер</span>
+          <strong>{stats.completedModules}/{stats.totalModules}</strong>
+          <p>Курс бойынша</p>
+        </article>
+
+        <article className="profile-metric-card profile-metric-card--plain">
+          <span>Тест саны</span>
+          <strong>{stats.quizCount}</strong>
+          <p>Тапсырылған quiz</p>
+        </article>
       </div>
 
-      <article className="course-progress-card">
-        <h2>Модульдер бойынша прогресс</h2>
-        {modules.map((module) => {
-          const moduleStats = getModuleStats(module, courseProgress);
-          return (
-            <div className="progress-line" key={module.id}>
-              <b>{module.title}</b>
-              <div className="line-bar"><i style={{ width: `${moduleStats.percent}%` }} /></div>
-              <strong>{moduleStats.percent}%</strong>
-            </div>
-          );
-        })}
+      <article className="profile-progress-panel">
+        <div className="profile-progress-panel__title">
+          <h2>Модульдер бойынша прогресс</h2>
+          <span>{stats.totalPercent}%</span>
+        </div>
+
+        <div className="profile-progress-list">
+          {modules.map((module) => {
+            const moduleStats = getModuleStats(module, courseProgress);
+            return (
+              <div className="profile-module-row" key={module.id}>
+                <b>{module.title}</b>
+                <div className="profile-module-track">
+                  <i
+                    className={moduleStats.percent === 100 ? "is-complete" : ""}
+                    style={{ width: `${moduleStats.percent}%` }}
+                  />
+                </div>
+                <strong>{moduleStats.percent}%</strong>
+              </div>
+            );
+          })}
+        </div>
       </article>
     </section>
   );
 }
-
 
 function LoginPage({ setPage, setAuth, saveProfile }) {
   const [form, setForm] = useState({ email: "", password: "" });
