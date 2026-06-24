@@ -15,6 +15,7 @@ const DEFAULT_PROFILE = {
 const MODULES = [
   {
     id: "data_types",
+    lessonId: 1,
     title: "1-модуль: Деректер түрлері",
     description: "Деректерді жинау және топтау",
     presentation: "/presentations/data-types.pdf",
@@ -68,7 +69,7 @@ function App() {
     refresh: localStorage.getItem("refresh") || "",
   }));
 
-  const [openedModules, setOpenedModules] = useState({ data_types: true });
+  const [openedModules, setOpenedModules] = useState({ data_types: false });
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -662,7 +663,13 @@ function getCourseStats(modules, courseProgress) {
   };
 }
 
-function CoursePage({ modules, openedModules, toggleModule }) {
+function CoursePage({
+  modules,
+  openedModules,
+  courseProgress,
+  startModuleQuiz,
+  toggleModule,
+}) {
   return (
     <section className="page-shell">
       <div className="page-header">
@@ -671,35 +678,60 @@ function CoursePage({ modules, openedModules, toggleModule }) {
       </div>
 
       <div className="course-layout">
-        {modules.map((module) => (
-          <article className="course-module" key={module.id}>
-            <button
-              className="course-module-head"
-              type="button"
-              onClick={() => toggleModule(module.id)}
-            >
-              <div>
-                <span>{openedModules[module.id] ? "⌄" : "›"}</span>
+        {modules.map((module) => {
+          const isOpen = Boolean(openedModules[module.id]);
+          const progress = courseProgress?.[module.id] || {};
+          const quizPassed = Boolean(progress.testPassed);
 
+          return (
+            <article className="course-module" key={module.id}>
+              <button
+                className="course-module-head"
+                type="button"
+                onClick={() => toggleModule(module.id)}
+              >
                 <div>
-                  <h2>{module.title}</h2>
-                  <p>{module.description}</p>
+                  <span>{isOpen ? "⌄" : "›"}</span>
+
+                  <div>
+                    <h2>{module.title}</h2>
+                    <p>{module.description}</p>
+                  </div>
                 </div>
-              </div>
 
-              <em>{openedModules[module.id] ? "Жабу" : "Ашу"}</em>
-            </button>
+                <em>{isOpen ? "Жабу" : "Ашу"}</em>
+              </button>
 
-            {openedModules[module.id] && (
-              <div className="course-module-body">
-                <PresentationViewer
-                  fileUrl={module.presentation}
-                  title={module.title}
-                />
-              </div>
-            )}
-          </article>
-        ))}
+              {isOpen && (
+                <div className="course-module-body">
+                  <PresentationViewer
+                    fileUrl={module.presentation}
+                    title={module.title}
+                  />
+
+                  <div className="module-quiz-card">
+                    <div>
+                      <span>Модуль тесті</span>
+                      <h3>{quizPassed ? "Тест аяқталды" : "Біліміңізді тексеріңіз"}</h3>
+                      <p>
+                        {quizPassed
+                          ? "Бұл модульдің quiz нәтижесі сақталды."
+                          : "Презентацияны оқығаннан кейін quiz тапсырыңыз."}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => startModuleQuiz(module)}
+                    >
+                      {quizPassed ? "Қайта өту" : "Quiz бастау"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
     </section>
   );
