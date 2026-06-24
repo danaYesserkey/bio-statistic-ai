@@ -85,7 +85,7 @@ def get_ai_tutor_response(messages_history: list) -> str:
             model="llama-3.1-8b-instant",
             messages=full_messages,
             temperature=0.1,
-            max_tokens=380,
+            max_tokens=500,
         )
         answer = response.choices[0].message.content
         if not answer or not answer.strip():
