@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
-
 const API_BASE_URL = "http://127.0.0.1:8000";
 
 const DEFAULT_PROFILE = {
@@ -16,10 +15,9 @@ const DEFAULT_PROFILE = {
 const MODULES = [
   {
     id: "data_types",
-    lessonId: 1, // Change 1 only if the Lesson ID in Django Admin is different.
     title: "1-модуль: Деректер түрлері",
-    description: "",
-    test: true,
+    description: "Деректерді жинау және топтау",
+    presentation: "/presentations/data-types.pdf",
   },
 ];
 
@@ -664,56 +662,94 @@ function getCourseStats(modules, courseProgress) {
   };
 }
 
-function CoursePage({
-  modules,
-  openedModules,
-  toggleModule,
-  courseProgress,
-  startModuleQuiz,
-}) {
+function CoursePage({ modules, openedModules, toggleModule }) {
   return (
-    <section className="page-shell course-page-shell">
-      <div className="page-heading">
-        <p className="page-kicker">Курс</p>
+    <section className="page-shell">
+      <div className="page-header">
+        <span>COURSE</span>
         <h1>Курс материалдары</h1>
       </div>
 
       <div className="course-layout">
-        {modules.map((module) => {
-          const stats = getModuleStats(module, courseProgress);
+        {modules.map((module) => (
+          <article className="course-module" key={module.id}>
+            <button
+              className="course-module-head"
+              type="button"
+              onClick={() => toggleModule(module.id)}
+            >
+              <div>
+                <span>{openedModules[module.id] ? "⌄" : "›"}</span>
 
-          return (
-            <article className="course-module" key={module.id}>
-              <button
-                className="course-module-head"
-                type="button"
-                onClick={() => toggleModule(module.id)}
-              >
                 <div>
-                  <span className="course-chevron">
-                    {openedModules[module.id] ? "⌄" : "›"}
-                  </span>
                   <h2>{module.title}</h2>
+                  <p>{module.description}</p>
                 </div>
-                <strong>{stats.percent}%</strong>
-              </button>
+              </div>
 
-              {openedModules[module.id] && (
-                <div className="course-module-body">
-                  <button
-                    type="button"
-                    className="quiz-start-button"
-                    onClick={() => startModuleQuiz(module)}
-                  >
-                    Модуль тестін бастау
-                  </button>
-                </div>
-              )}
-            </article>
-          );
-        })}
+              <em>{openedModules[module.id] ? "Жабу" : "Ашу"}</em>
+            </button>
+
+            {openedModules[module.id] && (
+              <div className="course-module-body">
+                <PresentationViewer
+                  fileUrl={module.presentation}
+                  title={module.title}
+                />
+              </div>
+            )}
+          </article>
+        ))}
       </div>
     </section>
+  );
+}
+
+function PresentationViewer({ fileUrl, title }) {
+  const [pageNumber, setPageNumber] = useState(1);
+
+  const pdfUrl = `${fileUrl}#page=${pageNumber}&zoom=page-width&toolbar=0&navpanes=0`;
+
+  return (
+    <div className="presentation-viewer">
+      <div className="presentation-toolbar">
+        <div>
+          <span>Презентация</span>
+          <strong>{title}</strong>
+        </div>
+
+        <a href={fileUrl} target="_blank" rel="noreferrer">
+          Толық экранда ашу
+        </a>
+      </div>
+
+      <div className="presentation-native-frame">
+        <iframe
+          key={pageNumber}
+          title={`${title} — ${pageNumber}-бет`}
+          src={pdfUrl}
+        />
+      </div>
+
+      <div className="presentation-pagination">
+        <button
+          type="button"
+          disabled={pageNumber === 1}
+          onClick={() => setPageNumber((page) => Math.max(1, page - 1))}
+        >
+          ← Алдыңғы
+        </button>
+
+        <span>{pageNumber}-бет</span>
+
+        <button
+          type="button"
+          onClick={() => setPageNumber((page) => page + 1)}
+        >
+          Келесі →
+        </button>
+      </div>
+    </div>
   );
 }
 
