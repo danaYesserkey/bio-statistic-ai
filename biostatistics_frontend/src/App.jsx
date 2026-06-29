@@ -785,6 +785,25 @@ function PresentationViewer({ fileUrl, title }) {
   );
 }
 
+const getQuestionText = (question) =>
+    question?.text || question?.question || "Сұрақ жүктелмеді.";
+
+  const getQuestionOptions = (question) => {
+    const rawOptions =
+      question?.answer_options ||
+      question?.options ||
+      question?.answers ||
+      [];
+
+    return rawOptions.map((option, index) => ({
+      id: typeof option === "string" ? index : option?.id ?? index,
+      text:
+        typeof option === "string"
+          ? option
+          : option?.text || option?.label || String(option ?? ""),
+    }));
+  };
+
 function QuizPage({
   activeQuiz,
   quizLoading,
@@ -1133,7 +1152,7 @@ function LoginPage({ setPage, setAuth, saveProfile }) {
   const login = async () => {
     setError("");
     try {
-      const response = await fetch(`${API_BASE_URL}/users/login/`, {
+      const response = await fetch(`${API_BASE_URL}/api/users/login/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
