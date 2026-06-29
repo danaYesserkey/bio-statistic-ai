@@ -220,13 +220,18 @@ function App() {
   };
 
   const getQuizQuestions = (quiz) =>
-    (quiz?.blocks || []).flatMap((block) => block.questions || []);
+    (quiz?.blocks || []).flatMap((block) =>
+      (block.questions || []).map((question) => ({
+        ...question,
+        context: block.context || null,
+      }))
+    );
 
   const startModuleQuiz = async (module) => {
     setPage("quiz");
     setQuizLoading(true);
     setQuizError("");
-    setActiveQuiz({ module, quiz: null, questions: [] });
+    setActiveQuiz({ module, quiz: null, questions: [], isSubmitted: false });
     setCurrentQuestionIndex(0);
     setQuizAnswers({});
 
@@ -251,7 +256,21 @@ function App() {
         throw new Error("Бұл сабаққа quiz сұрақтары әлі қосылмаған.");
       }
 
-      setActiveQuiz({ module, quiz: data, questions });
+      const hasBeenSubmitted = data.score !== null && data.score !== undefined;
+      const showReview = hasBeenSubmitted && Boolean(data.passed);
+      if (showReview) {
+        const prefilledAnswers = {};
+        questions.forEach((question) => {
+          if (question.user_answer !== undefined) {
+            prefilledAnswers[question.id] = question.user_answer;
+          }
+        });
+        setQuizAnswers(prefilledAnswers);
+      } else {
+        setQuizAnswers({});
+      }
+
+      setActiveQuiz({ module, quiz: data, questions, isSubmitted: showReview });
     } catch (error) {
       setQuizError(error.message);
     } finally {
@@ -356,23 +375,74 @@ function App() {
         },
       });
 
-      const wrongResult = (data.results || []).find((item) => !item.is_correct);
+      const resultsByQuestionId = {};
+      (data.results || []).forEach((result) => {
+        resultsByQuestionId[result.question_id] = result;
+      });
 
-      if (wrongResult) {
-        const wrongQuestion = questions.find(
-          (question) => question.id === wrongResult.question_id
-        );
+      const mergedQuestions = questions.map((question) => {
+        const result = resultsByQuestionId[question.id];
+        return result
+          ? {
+              ...question,
+              user_answer: result.user_answer,
+              is_correct: result.is_correct,
+              correct_answer: result.correct_answer,
+            }
+          : question;
+      });
 
-        await discussWrongQuizAnswer(
-          wrongQuestion || questions[0],
-          wrongResult.user_answer,
-          !data.passed
-        );
-        return;
+      setActiveQuiz((previous) => ({
+        ...previous,
+        questions: mergedQuestions,
+        isSubmitted: true,
+        quiz: {
+          ...previous.quiz,
+          score: data.score,
+          total_questions: data.total_questions,
+          score_percentage: data.score_percentage,
+          passed: data.passed,
+        },
+      }));
+
+      setCurrentQuestionIndex(0);
+      setQuizError("");
+    } catch (error) {
+      setQuizError(error.message);
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const resetQuizAttempt = async () => {
+    if (!activeQuiz?.quiz || quizLoading) return;
+
+    const hasPassed = Boolean(activeQuiz?.quiz?.passed);
+
+    if (!hasPassed) {
+      await startModuleQuiz(activeQuiz.module);
+      return;
+    }
+
+    setQuizLoading(true);
+    setQuizError("");
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/quizzes/${activeQuiz.quiz.id}/reset/`,
+        {
+          method: "POST",
+          headers: getApiHeaders(),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "Quiz қайта бастау қатесі.");
       }
 
-      setPendingQuiz(null);
-      setPage("course");
+      await startModuleQuiz(activeQuiz.module);
     } catch (error) {
       setQuizError(error.message);
     } finally {
@@ -385,14 +455,16 @@ function App() {
     const question = questions[currentQuestionIndex];
     const answer = quizAnswers[question?.id];
 
-    if (
-      answer === undefined ||
-      answer === null ||
-      answer === "" ||
-      (Array.isArray(answer) && answer.length === 0)
-    ) {
-      setQuizError("Жауапты таңдаңыз.");
-      return;
+    if (!activeQuiz?.isSubmitted) {
+      if (
+        answer === undefined ||
+        answer === null ||
+        answer === "" ||
+        (Array.isArray(answer) && answer.length === 0)
+      ) {
+        setQuizError("Жауапты таңдаңыз.");
+        return;
+      }
     }
 
     setQuizError("");
@@ -402,7 +474,9 @@ function App() {
       return;
     }
 
-    submitQuizAttempt();
+    if (!activeQuiz?.isSubmitted) {
+      submitQuizAttempt();
+    }
   };
 
   const handleKeyDown = (event) => {
@@ -482,6 +556,10 @@ function App() {
             setQuizAnswer={setQuizAnswer}
             goToNextQuizQuestion={goToNextQuizQuestion}
             backToCourse={() => setPage("course")}
+            discussWrongAnswer={(question) =>
+              discussWrongQuizAnswer(question, question.user_answer, true)
+            }
+            retakeQuiz={resetQuizAttempt}
           />
         )}
 
@@ -813,6 +891,8 @@ function QuizPage({
   setQuizAnswer,
   goToNextQuizQuestion,
   backToCourse,
+  discussWrongAnswer,
+  retakeQuiz,
 }) {
   const questions = activeQuiz?.questions || [];
   const question = questions[currentQuestionIndex];
@@ -820,13 +900,36 @@ function QuizPage({
   const options = question ? getQuestionOptions(question) : [];
   const selectedAnswer = question ? quizAnswers[question.id] : undefined;
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
+  const isSubmitted = Boolean(activeQuiz?.isSubmitted);
+  const context = question?.context || null;
 
   const toggleMultipleOption = (optionId) => {
+    if (isSubmitted) return;
     const previous = Array.isArray(selectedAnswer) ? selectedAnswer : [];
     const next = previous.includes(optionId)
       ? previous.filter((id) => id !== optionId)
       : [...previous, optionId];
     setQuizAnswer(question, next);
+  };
+
+  const getOptionReviewClass = (option) => {
+    if (!isSubmitted) return "";
+
+    const correctAnswer = question?.correct_answer;
+    const isMultiple = questionType === "birneshe";
+
+    const isCorrectOption = isMultiple
+      ? Array.isArray(correctAnswer) && correctAnswer.includes(option.id)
+      : correctAnswer === option.id;
+
+    const isUserPick = isMultiple
+      ? Array.isArray(selectedAnswer) && selectedAnswer.includes(option.id)
+      : selectedAnswer === option.id;
+
+    if (isCorrectOption && isUserPick) return "selected correct";
+    if (isCorrectOption) return "correct-answer";
+    if (isUserPick) return "selected incorrect";
+    return "";
   };
 
   return (
@@ -841,6 +944,26 @@ function QuizPage({
       <div className="page-heading">
         <p className="page-kicker">Модуль тесті</p>
         <h1>{activeQuiz?.module?.title || "Quiz"}</h1>
+        <div className="quiz-score-summary-row">
+          {isSubmitted && activeQuiz?.quiz ? (
+            <p className="quiz-score-summary">
+              Нәтиже: {activeQuiz.quiz.score} / {activeQuiz.quiz.total_questions} (
+              {activeQuiz.quiz.score_percentage}%)
+            </p>
+          ) : (
+            <span />
+          )}
+
+          {retakeQuiz && (
+            <button
+              type="button"
+              className="quiz-retake-button"
+              onClick={retakeQuiz}
+            >
+              {"Қайта тапсыру"}
+            </button>
+          )}
+        </div>
       </div>
 
       {quizLoading && <div className="quiz-card">Quiz жүктеліп жатыр...</div>}
@@ -853,6 +976,23 @@ function QuizPage({
 
       {!quizLoading && question && (
         <article className="quiz-card">
+          {context && (
+            <div className="quiz-context">
+              {context.title && <h3>{context.title}</h3>}
+              {context.text && <p>{context.text}</p>}
+              {context.dataset_file && (
+                <a
+                  href={context.dataset_file}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="quiz-context-file"
+                >
+                  Файлды ашу
+                </a>
+              )}
+            </div>
+          )}
+
           <p className="quiz-question">{getQuestionText(question)}</p>
 
           {questionType === "text" ? (
@@ -861,6 +1001,7 @@ function QuizPage({
               value={selectedAnswer || ""}
               onChange={(event) => setQuizAnswer(question, event.target.value)}
               placeholder="Жауапты жазыңыз"
+              readOnly={isSubmitted}
             />
           ) : (
             <div className="quiz-options">
@@ -870,11 +1011,19 @@ function QuizPage({
                   ? Array.isArray(selectedAnswer) && selectedAnswer.includes(option.id)
                   : selectedAnswer === option.id;
 
+                const reviewClass = getOptionReviewClass(option);
+                const className = isSubmitted
+                  ? reviewClass
+                  : selected
+                  ? "selected"
+                  : "";
+
                 return (
                   <button
                     type="button"
                     key={option.id}
-                    className={selected ? "selected" : ""}
+                    className={className}
+                    disabled={isSubmitted}
                     onClick={() =>
                       isMultiple
                         ? toggleMultipleOption(option.id)
@@ -888,12 +1037,39 @@ function QuizPage({
             </div>
           )}
 
+          {isSubmitted && questionType === "text" && (
+            <p className="quiz-text-correct-answer">
+              Дұрыс жауап: {question.correct_answer}
+            </p>
+          )}
+
+          {isSubmitted && (
+            <div className={`quiz-review-indicator ${question.is_correct ? "correct" : "incorrect"}`}>
+              <span>{question.is_correct ? "Дұрыс жауап" : "Қате жауап"}</span>
+              {!question.is_correct && discussWrongAnswer && (
+                <button
+                  type="button"
+                  className="quiz-discuss-button"
+                  onClick={() => discussWrongAnswer(question)}
+                >
+                  ЖИ-мен бірге талқылау
+                </button>
+              )}
+            </div>
+          )}
+
           <button
             type="button"
             className="quiz-submit-button"
             onClick={goToNextQuizQuestion}
           >
-            {isLastQuestion ? "Тестті аяқтау" : "Келесі сұрақ"}
+            {isSubmitted
+              ? isLastQuestion
+                ? "Аяқтау"
+                : "Келесі сұрақ"
+              : isLastQuestion
+              ? "Тестті аяқтау"
+              : "Келесі сұрақ"}
           </button>
         </article>
       )}
