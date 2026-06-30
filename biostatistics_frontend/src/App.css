@@ -1337,3 +1337,61 @@ button:disabled {
 .quiz-retake-button:hover {
   background: #fff7ed;
 }
+
+.course-status {
+  color: #666;
+  font-size: 14px;
+  margin: 8px 0 16px;
+}
+.course-status-error {
+  color: #dc2626;
+}
+
+.module-lesson-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.module-lesson-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #e1e6f0;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+}
+.module-lesson-row:hover {
+  background: #f5f7fb;
+}
+.lesson-done-badge {
+  color: #16a34a;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.lesson-content-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+.lesson-content-row {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #e1e6f0;
+  background: #fff;
+  text-decoration: none;
+  color: #2563eb;
+  font-size: 14px;
+}
+
+.quiz-empty {
+  text-align: center;
+}
+.quiz-empty button {
+  margin-top: 12px;
+}

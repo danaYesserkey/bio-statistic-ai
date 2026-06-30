@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 const API_BASE_URL = "http://127.0.0.1:8000";
 
+function toAbsoluteFileUrl(path) {
+  if (!path) return path;
+  return /^https?:\/\//i.test(path) ? path : `${API_BASE_URL}${path}`;
+}
+
 const DEFAULT_PROFILE = {
   full_name: "Студент",
   email: "",
@@ -12,15 +17,27 @@ const DEFAULT_PROFILE = {
   role: "STUDENT",
 };
 
-const MODULES = [
-  {
-    id: "data_types",
-    lessonId: 1,
-    title: "1-модуль: Деректер түрлері",
-    description: "Деректерді жинау және топтау",
-    presentation: "/presentations/data-types.pdf",
-  },
-];
+const COURSE_ID = 1;
+
+function normalizeModule(rawModule) {
+  const lessons = (rawModule.lessons || [])
+    .slice()
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((lesson) => ({
+      id: lesson.id,
+      module: lesson.module,
+      title: lesson.lesson_name,
+      order: lesson.order,
+    }));
+
+  return {
+    id: rawModule.id,
+    title: rawModule.module_name,
+    description: `${lessons.length} сабақ`,
+    order: rawModule.order,
+    lessons,
+  };
+}
 
 function loadJSON(key, fallback) {
   try {
@@ -69,7 +86,16 @@ function App() {
     refresh: localStorage.getItem("refresh") || "",
   }));
 
-  const [openedModules, setOpenedModules] = useState({ data_types: false });
+  const [openedModules, setOpenedModules] = useState({});
+
+  const [course, setCourse] = useState(null);
+  const [courseLoading, setCourseLoading] = useState(false);
+  const [courseError, setCourseError] = useState("");
+
+  const [activeLesson, setActiveLesson] = useState(null);
+  const [lessonLoading, setLessonLoading] = useState(false);
+  const [lessonError, setLessonError] = useState("");
+
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -98,6 +124,11 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, loading]);
 
+  useEffect(() => {
+    loadCourse();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const saveProfile = (nextProfile) => {
     setProfile(nextProfile);
     localStorage.setItem("studentProfile", JSON.stringify(nextProfile));
@@ -125,6 +156,67 @@ function App() {
     }
 
     return headers;
+  };
+
+  const loadCourse = async (courseId = COURSE_ID) => {
+    setCourseLoading(true);
+    setCourseError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/`, {
+        headers: getApiHeaders(),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "Курс жүктелмеді.");
+      }
+
+      setCourse({
+        id: data.id,
+        title: data.course_name,
+        description: data.description,
+        modules: (data.modules || [])
+          .slice()
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map(normalizeModule),
+      });
+    } catch (error) {
+      setCourseError(error.message);
+    } finally {
+      setCourseLoading(false);
+    }
+  };
+
+  const openLesson = async (lesson) => {
+    setPage("lesson");
+    setLessonLoading(true);
+    setLessonError("");
+    setActiveLesson(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/lessons/${lesson.id}/`, {
+        headers: getApiHeaders(),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "Сабақ жүктелмеді.");
+      }
+
+      setActiveLesson({
+        id: data.id,
+        module: data.module,
+        title: data.lesson_name,
+        order: data.order,
+        contents: data.contents || [],
+        hasAccess: Boolean(data.has_access),
+      });
+    } catch (error) {
+      setLessonError(error.message);
+    } finally {
+      setLessonLoading(false);
+    }
   };
 
   const sendChatMessage = async ({ content, apiContent = content, files = [] }) => {
@@ -227,19 +319,25 @@ function App() {
       }))
     );
 
-  const startModuleQuiz = async (module) => {
+  const startLessonQuiz = async (lesson) => {
     setPage("quiz");
     setQuizLoading(true);
     setQuizError("");
-    setActiveQuiz({ module, quiz: null, questions: [], isSubmitted: false });
+    setActiveQuiz({ lesson, quiz: null, questions: [], isSubmitted: false, noQuiz: false });
     setCurrentQuestionIndex(0);
     setQuizAnswers({});
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/lessons/${module.lessonId}/quiz/`,
+        `${API_BASE_URL}/api/lessons/${lesson.id}/quiz/`,
         { headers: getApiHeaders() }
       );
+
+      if (response.status === 404) {
+        setActiveQuiz({ lesson, quiz: null, questions: [], isSubmitted: false, noQuiz: true });
+        return;
+      }
+
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
@@ -253,7 +351,8 @@ function App() {
       const questions = getQuizQuestions(data);
 
       if (!questions.length) {
-        throw new Error("Бұл сабаққа quiz сұрақтары әлі қосылмаған.");
+        setActiveQuiz({ lesson, quiz: null, questions: [], isSubmitted: false, noQuiz: true });
+        return;
       }
 
       const hasBeenSubmitted = data.score !== null && data.score !== undefined;
@@ -270,7 +369,7 @@ function App() {
         setQuizAnswers({});
       }
 
-      setActiveQuiz({ module, quiz: data, questions, isSubmitted: showReview });
+      setActiveQuiz({ lesson, quiz: data, questions, isSubmitted: showReview, noQuiz: false });
     } catch (error) {
       setQuizError(error.message);
     } finally {
@@ -302,12 +401,12 @@ function App() {
 
   const discussWrongQuizAnswer = async (question, answer, canReturnToQuiz) => {
     const visibleText =
-      `Мен модуль тестінде қате жауап бердім. Мен таңдаған жауап: "` +
+      `Мен тест тапсырмасында қате жауап бердім. Мен таңдаған жауап: "` +
       `${answerTextForChat(question, answer)}".`;
 
     setPendingQuiz(
       canReturnToQuiz
-        ? { moduleId: activeQuiz?.module?.id, moduleTitle: activeQuiz?.module?.title }
+        ? { lessonId: activeQuiz?.lesson?.id, lessonTitle: activeQuiz?.lesson?.title }
         : null
     );
 
@@ -363,14 +462,19 @@ function App() {
         return;
       }
 
+      const lessonId = activeQuiz.lesson.id;
+      const moduleId = activeQuiz.lesson.module;
       const score = Number(data.score_percentage ?? 0);
-      const currentProgress = courseProgress[activeQuiz.module.id] || {};
+      const currentProgress = courseProgress[moduleId] || {};
+      const passedLessons = currentProgress.passedLessons || [];
 
       saveCourseProgress({
         ...courseProgress,
-        [activeQuiz.module.id]: {
+        [moduleId]: {
           ...currentProgress,
-          testPassed: Boolean(data.passed),
+          passedLessons: data.passed
+            ? Array.from(new Set([...passedLessons, lessonId]))
+            : passedLessons,
           quizScores: [...(currentProgress.quizScores || []), score],
         },
       });
@@ -420,7 +524,7 @@ function App() {
     const hasPassed = Boolean(activeQuiz?.quiz?.passed);
 
     if (!hasPassed) {
-      await startModuleQuiz(activeQuiz.module);
+      await startModuleQuiz(activeQuiz.lesson);
       return;
     }
 
@@ -442,7 +546,7 @@ function App() {
         throw new Error(data.detail || data.error || "Quiz қайта бастау қатесі.");
       }
 
-      await startModuleQuiz(activeQuiz.module);
+      await startModuleQuiz(activeQuiz.lesson);
     } catch (error) {
       setQuizError(error.message);
     } finally {
@@ -531,18 +635,30 @@ function App() {
 
       <main className="app-main">
         {page === "home" && (
-          <HomePage profile={profile} setPage={setPage} quickAsk={quickAsk} />
+          <HomePage profile={profile} setPage={setPage} quickAsk={quickAsk} course={course} />
         )}
 
         {page === "course" && (
           <CoursePage
-            modules={MODULES}
+            course={course}
+            courseLoading={courseLoading}
+            courseError={courseError}
             openedModules={openedModules}
             courseProgress={courseProgress}
-            startModuleQuiz={startModuleQuiz}
+            openLesson={openLesson}
             toggleModule={(id) =>
               setOpenedModules((prev) => ({ ...prev, [id]: !prev[id] }))
             }
+          />
+        )}
+
+        {page === "lesson" && (
+          <LessonPage
+            activeLesson={activeLesson}
+            lessonLoading={lessonLoading}
+            lessonError={lessonError}
+            startLessonQuiz={startLessonQuiz}
+            backToCourse={() => setPage("course")}
           />
         )}
 
@@ -555,7 +671,7 @@ function App() {
             quizAnswers={quizAnswers}
             setQuizAnswer={setQuizAnswer}
             goToNextQuizQuestion={goToNextQuizQuestion}
-            backToCourse={() => setPage("course")}
+            backToCourse={() => setPage("lesson")}
             discussWrongAnswer={(question) =>
               discussWrongQuizAnswer(question, question.user_answer, true)
             }
@@ -588,7 +704,7 @@ function App() {
           <ProfilePage
             profile={profile}
             setPage={setPage}
-            modules={MODULES}
+            modules={course?.modules || []}
             courseProgress={courseProgress}
           />
         )}
@@ -618,7 +734,11 @@ function TopNav({ page, setPage, logout }) {
             key={key}
             type="button"
             onClick={() => setPage(key)}
-            className={page === key ? "active" : ""}
+            className={
+              page === key || (key === "course" && (page === "lesson" || page === "quiz"))
+                ? "active"
+                : ""
+            }
           >
             {label}
           </button>
@@ -632,8 +752,8 @@ function TopNav({ page, setPage, logout }) {
   );
 }
 
-function HomePage({ profile, setPage, quickAsk }) {
-  const currentModule = MODULES[0];
+function HomePage({ profile, setPage, quickAsk, course }) {
+  const currentModule = course?.modules?.[0]
 
   return (
     <section className="home-page">
@@ -646,7 +766,7 @@ function HomePage({ profile, setPage, quickAsk }) {
       <div className="home-three-grid">
         <article className="home-action-card">
           <p className="card-label">Курс</p>
-          <h2>{currentModule.title}</h2>
+          <h2>{currentModule?.title || course?.title || "Курс"}</h2>
           <p className="card-note">Қазіргі модуль</p>
           <button type="button" onClick={() => setPage("course")}>
             Модульді ашу
@@ -687,8 +807,7 @@ function getModuleStats(module, courseProgress) {
   const progress = courseProgress[module.id] || {};
   const lessons = module.lessons || [];
   const completedLessons = progress.lessonsCompleted || [];
-  const testExists = Boolean(module.test);
-  const totalItems = lessons.length + (testExists ? 1 : 0);
+  const totalItems = lessons.length;
 
   if (totalItems === 0) {
     return {
@@ -701,8 +820,7 @@ function getModuleStats(module, courseProgress) {
   }
 
   const doneItems =
-    lessons.filter((lesson) => completedLessons.includes(lesson.id)).length +
-    (progress.testPassed ? 1 : 0);
+    lessons.filter((lesson) => completedLessons.includes(lesson.id)).length;
 
   return {
     percent: Math.round((doneItems / totalItems) * 100),
@@ -742,24 +860,39 @@ function getCourseStats(modules, courseProgress) {
 }
 
 function CoursePage({
-  modules,
+  course,
+  courseLoading,
+  courseError,
   openedModules,
   courseProgress,
-  startModuleQuiz,
+  openLesson,
   toggleModule,
 }) {
+  const modules = course?.modules || [];
+
   return (
     <section className="page-shell">
       <div className="page-header">
         <span>COURSE</span>
-        <h1>Курс материалдары</h1>
+        <h1>{course?.title || "Курс материалдары"}</h1>
+        {course?.description && <p>{course.description}</p>}
       </div>
+
+      {courseLoading && <p className="course-status">Курс жүктеліп жатыр...</p>}
+
+      {!courseLoading && courseError && (
+        <p className="course-status course-status-error">{courseError}</p>
+      )}
+
+      {!courseLoading && !courseError && modules.length === 0 && (
+        <p className="course-status">Бұл курста модульдер әлі қосылмаған.</p>
+      )}
 
       <div className="course-layout">
         {modules.map((module) => {
           const isOpen = Boolean(openedModules[module.id]);
           const progress = courseProgress?.[module.id] || {};
-          const quizPassed = Boolean(progress.testPassed);
+          const passedLessons = progress.passedLessons || [];
 
           return (
             <article className="course-module" key={module.id}>
@@ -782,28 +915,22 @@ function CoursePage({
 
               {isOpen && (
                 <div className="course-module-body">
-                  <PresentationViewer
-                    fileUrl={module.presentation}
-                    title={module.title}
-                  />
+                  <div className="module-lesson-list">
+                    {(module.lessons || []).map((lesson) => {
+                      const lessonDone = passedLessons.includes(lesson.id);
 
-                  <div className="module-quiz-card">
-                    <div>
-                      <span>Модуль тесті</span>
-                      <h3>{quizPassed ? "Тест аяқталды" : "Біліміңізді тексеріңіз"}</h3>
-                      <p>
-                        {quizPassed
-                          ? "Бұл модульдің quiz нәтижесі сақталды."
-                          : "Презентацияны оқығаннан кейін quiz тапсырыңыз."}
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => startModuleQuiz(module)}
-                    >
-                      {quizPassed ? "Қайта өту" : "Quiz бастау"}
-                    </button>
+                      return (
+                        <button
+                          type="button"
+                          className="module-lesson-row"
+                          key={lesson.id}
+                          onClick={() => openLesson(lesson)}
+                        >
+                          <span>{lesson.title}</span>
+                          {lessonDone && <em className="lesson-done-badge">✓</em>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -811,6 +938,87 @@ function CoursePage({
           );
         })}
       </div>
+    </section>
+  );
+}
+
+function LessonPage({
+  activeLesson,
+  lessonLoading,
+  lessonError,
+  startLessonQuiz,
+  backToCourse,
+}) {
+  return (
+    <section className="page-shell">
+      <div className="quiz-top-row">
+        <button type="button" className="back-button" onClick={backToCourse}>
+          ← Курсқа оралу
+        </button>
+      </div>
+
+      {lessonLoading && <p className="course-status">Сабақ жүктеліп жатыр...</p>}
+
+      {!lessonLoading && lessonError && (
+        <p className="course-status course-status-error">{lessonError}</p>
+      )}
+
+      {!lessonLoading && !lessonError && activeLesson && (
+        <>
+          <div className="page-heading">
+            <p className="page-kicker">Сабақ</p>
+            <h1>{activeLesson.title}</h1>
+          </div>
+
+          {!activeLesson.hasAccess && (
+            <p className="course-status course-status-error">
+              Бұл сабаққа қолжетімділігіңіз жоқ.
+            </p>
+          )}
+
+          {activeLesson.hasAccess && (
+            <>
+              <div className="lesson-content-list">
+                {activeLesson.contents.length === 0 && (
+                  <p className="course-status">Бұл сабаққа материал әлі қосылмаған.</p>
+                )}
+
+                {activeLesson.contents.map((item) =>
+                  item.mime_type === "application/pdf" ? (
+                    <PresentationViewer
+                      key={item.id}
+                      fileUrl={toAbsoluteFileUrl(item.file)}
+                      title={item.original_filename}
+                    />
+                  ) : (
+                    <a
+                      key={item.id}
+                      href={toAbsoluteFileUrl(item.file)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="lesson-content-row"
+                    >
+                      📎 {item.original_filename}
+                    </a>
+                  )
+                )}
+              </div>
+
+              <div className="module-quiz-card">
+                <div>
+                  <span>Сабақ тесті</span>
+                  <h3>Біліміңізді тексеріңіз</h3>
+                  <p>Материалды оқығаннан кейін quiz тапсырыңыз.</p>
+                </div>
+
+                <button type="button" onClick={() => startLessonQuiz(activeLesson)}>
+                  Quiz бастау
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </section>
   );
 }
@@ -943,7 +1151,7 @@ function QuizPage({
 
       <div className="page-heading">
         <p className="page-kicker">Модуль тесті</p>
-        <h1>{activeQuiz?.module?.title || "Quiz"}</h1>
+        <h1>{activeQuiz?.lesson?.title || "Quiz"}</h1>
         <div className="quiz-score-summary-row">
           {isSubmitted && activeQuiz?.quiz ? (
             <p className="quiz-score-summary">
@@ -971,6 +1179,15 @@ function QuizPage({
       {!quizLoading && quizError && (
         <div className="quiz-card quiz-error">
           <p>{quizError}</p>
+        </div>
+      )}
+
+      {!quizLoading && !quizError && activeQuiz?.noQuiz && (
+        <div className="quiz-card quiz-empty">
+          <p>Бұл сабаққа quiz әлі қосылмаған.</p>
+          <button type="button" onClick={backToCourse}>
+            Курсқа оралу
+          </button>
         </div>
       )}
 
