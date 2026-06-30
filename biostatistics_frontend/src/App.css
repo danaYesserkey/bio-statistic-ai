@@ -1389,6 +1389,10 @@ button:disabled {
   font-size: 14px;
 }
 
+.module-lesson-row span {
+  color: var(--text-dark);
+}
+
 .quiz-empty {
   text-align: center;
 }

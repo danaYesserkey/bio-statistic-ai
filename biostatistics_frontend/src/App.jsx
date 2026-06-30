@@ -81,6 +81,10 @@ function App() {
     loadJSON("courseProgress", {})
   );
 
+  const [stats, setStats] = useState([]);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState("");
+
   const [auth, setAuth] = useState(() => ({
     access: localStorage.getItem("access") || "",
     refresh: localStorage.getItem("refresh") || "",
@@ -95,6 +99,8 @@ function App() {
   const [activeLesson, setActiveLesson] = useState(null);
   const [lessonLoading, setLessonLoading] = useState(false);
   const [lessonError, setLessonError] = useState("");
+  const [lessonScoreLoading, setLessonScoreLoading] = useState(false);
+  const [lessonScoreMessage, setLessonScoreMessage] = useState("");
 
   const [messages, setMessages] = useState([
     {
@@ -126,6 +132,7 @@ function App() {
 
   useEffect(() => {
     loadCourse();
+    loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -158,12 +165,62 @@ function App() {
     return headers;
   };
 
+  const refreshAccessToken = async () => {
+    const refreshToken = auth.refresh || localStorage.getItem("refresh") || "";
+
+    if (!refreshToken || refreshToken.startsWith("local-")) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/token/refresh/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh: refreshToken }),
+      });
+
+      if (!response.ok) return null;
+
+      const data = await response.json().catch(() => ({}));
+      if (!data.access) return null;
+
+      localStorage.setItem("access", data.access);
+      setAuth((previous) => ({ ...previous, access: data.access }));
+
+      return data.access;
+    } catch {
+      return null;
+    }
+  };
+
+  const apiFetch = async (url, options = {}) => {
+    const response = await fetch(url, options);
+
+    if (response.status !== 401) {
+      return response;
+    }
+
+    const newAccess = await refreshAccessToken();
+
+    if (!newAccess) {
+      logout();
+      return response;
+    }
+
+    const headers = { ...(options.headers || {}) };
+    if (headers.Authorization) {
+      headers.Authorization = `Bearer ${newAccess}`;
+    }
+
+    return fetch(url, { ...options, headers });
+  };
+
   const loadCourse = async (courseId = COURSE_ID) => {
     setCourseLoading(true);
     setCourseError("");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/courses/${courseId}/`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/courses/${courseId}/`, {
         headers: getApiHeaders(),
       });
       const data = await response.json().catch(() => ({}));
@@ -188,6 +245,28 @@ function App() {
     }
   };
 
+  const loadStats = async () => {
+    setStatsLoading(true);
+    setStatsError("");
+
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/api/stats/`, {
+        headers: getApiHeaders(),
+      });
+      const data = await response.json().catch(() => ([]));
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "Статистика жүктелмеді.");
+      }
+
+      setStats(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setStatsError(error.message);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
   const openLesson = async (lesson) => {
     setPage("lesson");
     setLessonLoading(true);
@@ -195,7 +274,7 @@ function App() {
     setActiveLesson(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/lessons/${lesson.id}/`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/lessons/${lesson.id}/`, {
         headers: getApiHeaders(),
       });
       const data = await response.json().catch(() => ({}));
@@ -216,6 +295,48 @@ function App() {
       setLessonError(error.message);
     } finally {
       setLessonLoading(false);
+    }
+  };
+
+  const markLessonComplete = async (lesson) => {
+    if (!lesson || lessonScoreLoading) return;
+
+    setLessonScoreLoading(true);
+    setLessonScoreMessage("");
+
+    try {
+      const response = await apiFetch(
+        `${API_BASE_URL}/api/lessons/${lesson.id}/score/`,
+        {
+          method: "POST",
+          headers: getApiHeaders(),
+        }
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "Сабақты белгілеу қатесі.");
+      }
+
+      const moduleId = lesson.module;
+      const currentProgress = courseProgress[moduleId] || {};
+      const completed = currentProgress.lessonsCompleted || [];
+
+      saveCourseProgress({
+        ...courseProgress,
+        [moduleId]: {
+          ...currentProgress,
+          lessonsCompleted: Array.from(new Set([...completed, lesson.id])),
+        },
+      });
+
+      setLessonScoreMessage(data.message || "Сабақ аяқталды деп белгіленді.");
+      loadStats();
+    } catch (error) {
+      setLessonScoreMessage(error.message);
+    } finally {
+      setLessonScoreLoading(false);
     }
   };
 
@@ -328,7 +449,7 @@ function App() {
     setQuizAnswers({});
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/api/lessons/${lesson.id}/quiz/`,
         { headers: getApiHeaders() }
       );
@@ -442,7 +563,7 @@ function App() {
     setQuizError("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/api/quizzes/${activeQuiz.quiz.id}/submit/`,
         {
           method: "POST",
@@ -532,7 +653,7 @@ function App() {
     setQuizError("");
 
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/api/quizzes/${activeQuiz.quiz.id}/reset/`,
         {
           method: "POST",
@@ -659,6 +780,10 @@ function App() {
             lessonError={lessonError}
             startLessonQuiz={startLessonQuiz}
             backToCourse={() => setPage("course")}
+            markLessonComplete={markLessonComplete}
+            lessonScoreLoading={lessonScoreLoading}
+            lessonScoreMessage={lessonScoreMessage}
+            courseProgress={courseProgress}
           />
         )}
 
@@ -704,8 +829,9 @@ function App() {
           <ProfilePage
             profile={profile}
             setPage={setPage}
-            modules={course?.modules || []}
-            courseProgress={courseProgress}
+            stats={stats}
+            statsLoading={statsLoading}
+            statsError={statsError}
           />
         )}
       </main>
@@ -948,7 +1074,18 @@ function LessonPage({
   lessonError,
   startLessonQuiz,
   backToCourse,
+  markLessonComplete,
+  lessonScoreLoading,
+  lessonScoreMessage,
+  courseProgress,
 }) {
+  const moduleProgress = activeLesson
+    ? courseProgress?.[activeLesson.module] || {}
+    : {};
+  const isCompleted = (moduleProgress.lessonsCompleted || []).includes(
+    activeLesson?.id
+  );
+
   return (
     <section className="page-shell">
       <div className="quiz-top-row">
@@ -1002,6 +1139,31 @@ function LessonPage({
                     </a>
                   )
                 )}
+              </div>
+
+              <div className="module-quiz-card">
+                <div>
+                  <span>Сабақ материалы</span>
+                  <h3>{isCompleted ? "Сабақ аяқталды" : "Сабақты аяқтадыңыз ба?"}</h3>
+                  <p>
+                    {lessonScoreMessage ||
+                      (isCompleted
+                        ? "Бұл сабақ аяқталды деп белгіленген."
+                        : "Материалды оқып болғаннан кейін белгілеңіз.")}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={lessonScoreLoading}
+                  onClick={() => markLessonComplete(activeLesson)}
+                >
+                  {lessonScoreLoading
+                    ? "Сақталуда..."
+                    : isCompleted
+                    ? "Қайта белгілеу"
+                    : "Аяқталды деп белгілеу"}
+                </button>
               </div>
 
               <div className="module-quiz-card">
@@ -1435,7 +1597,13 @@ function ChatMessage({ msg, initials }) {
   );
 }
 
-function ProfilePage({ profile, setPage, modules, courseProgress }) {
+function ProfilePage({
+  profile,
+  setPage,
+  stats,
+  statsLoading,
+  statsError,
+}) {
   const rows = [
     ["ФИО", profile.full_name],
     ["Email", profile.email],
@@ -1445,8 +1613,16 @@ function ProfilePage({ profile, setPage, modules, courseProgress }) {
     ["Университет", profile.university],
   ];
 
-  const stats = getCourseStats(modules, courseProgress);
-  const scoreText = stats.averageScore === null ? "—" : `${stats.averageScore}%`;
+  const courseStats =
+    (stats || []).find((entry) => entry.course_id === COURSE_ID) ||
+    (stats || [])[0] ||
+    null;
+
+  const totalPercent = courseStats?.overall_progress ?? 0;
+  const scoreText =
+    courseStats?.average_quiz_score === null || courseStats?.average_quiz_score === undefined
+      ? "—"
+      : `${courseStats.average_quiz_score}%`;
 
   return (
     <section className="page-shell profile-page-shell">
@@ -1457,6 +1633,11 @@ function ProfilePage({ profile, setPage, modules, courseProgress }) {
           <p></p>
         </div>
       </div>
+
+      {statsLoading && <p className="course-status">Статистика жүктеліп жатыр...</p>}
+      {!statsLoading && statsError && (
+        <p className="course-status course-status-error">{statsError}</p>
+      )}
 
       <div className="profile-dashboard-grid">
         <article className="student-profile-card">
@@ -1484,27 +1665,33 @@ function ProfilePage({ profile, setPage, modules, courseProgress }) {
 
         <article className="profile-metric-card profile-metric-card--blue">
           <span>Жалпы прогресс</span>
-          <strong>{stats.totalPercent}%</strong>
+          <strong>{totalPercent}%</strong>
           <div className="profile-metric-bar">
-            <i style={{ width: `${stats.totalPercent}%` }} />
+            <i style={{ width: `${totalPercent}%` }} />
           </div>
         </article>
 
         <article className="profile-metric-card profile-metric-card--green">
           <span>Орташа балл</span>
           <strong>{scoreText}</strong>
-          <p>{stats.quizCount ? `${stats.quizCount} quiz тапсырылды` : "Quiz нәтижесі жоқ"}</p>
+          <p>
+            {courseStats?.completed_quizzes
+              ? `${courseStats.completed_quizzes} тест тапсырылды`
+              : "Quiz нәтижесі жоқ"}
+          </p>
         </article>
 
         <article className="profile-metric-card profile-metric-card--plain">
           <span>Аяқталған модульдер</span>
-          <strong>{stats.completedModules}/{stats.totalModules}</strong>
+          <strong>
+            {courseStats?.completed_modules ?? 0}/{courseStats?.total_modules ?? 0}
+          </strong>
           <p>Курс бойынша</p>
         </article>
 
         <article className="profile-metric-card profile-metric-card--plain">
           <span>Тест саны</span>
-          <strong>{stats.quizCount}</strong>
+          <strong>{courseStats?.total_quizzes ?? 0}</strong>
           <p>Тапсырылған quiz</p>
         </article>
       </div>
@@ -1512,25 +1699,22 @@ function ProfilePage({ profile, setPage, modules, courseProgress }) {
       <article className="profile-progress-panel">
         <div className="profile-progress-panel__title">
           <h2>Модульдер бойынша прогресс</h2>
-          <span>{stats.totalPercent}%</span>
+          <span>{totalPercent}%</span>
         </div>
 
         <div className="profile-progress-list">
-          {modules.map((module) => {
-            const moduleStats = getModuleStats(module, courseProgress);
-            return (
-              <div className="profile-module-row" key={module.id}>
-                <b>{module.title}</b>
-                <div className="profile-module-track">
-                  <i
-                    className={moduleStats.percent === 100 ? "is-complete" : ""}
-                    style={{ width: `${moduleStats.percent}%` }}
-                  />
-                </div>
-                <strong>{moduleStats.percent}%</strong>
+          {(courseStats?.modules || []).map((module) => (
+            <div className="profile-module-row" key={module.module_id}>
+              <b>{module.module_name}</b>
+              <div className="profile-module-track">
+                <i
+                  className={module.module_progress === 100 ? "is-complete" : ""}
+                  style={{ width: `${module.module_progress}%` }}
+                />
               </div>
-            );
-          })}
+              <strong>{module.module_progress}%</strong>
+            </div>
+          ))}
         </div>
       </article>
     </section>
@@ -1603,40 +1787,80 @@ function LoginPage({ setPage, setAuth, saveProfile }) {
 
 function RegisterPage({ setPage, setAuth, saveProfile }) {
   const [form, setForm] = useState({
+    username: "",
     full_name: "",
     email: "",
-    group: "",
-    specialty: "",
-    student_id: "",
     university: "ҚазҰМУ",
+    faculty: "",
+    group: "",
     role: "STUDENT",
     password: "",
   });
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = useMemo(
     () =>
+      form.username.trim() &&
       form.full_name.trim() &&
       form.email.trim() &&
+      form.university.trim() &&
+      form.faculty.trim() &&
       form.group.trim() &&
-      form.specialty.trim() &&
-      form.student_id.trim() &&
       form.password.trim(),
     [form]
   );
 
   const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
 
-  const register = () => {
-    saveProfile({ ...DEFAULT_PROFILE, ...form });
-    localStorage.setItem("registeredLocal", "true");
-    localStorage.setItem("access", "local-access");
-    localStorage.setItem("refresh", "local-refresh");
-    setAuth({ access: "local-access", refresh: "local-refresh" });
-    setPage("home");
+  const register = async () => {
+    setError("");
+    setSubmitting(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/register/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "Тіркелу қатесі.");
+      }
+
+      localStorage.setItem("access", data.access || "local-access");
+      localStorage.setItem("refresh", data.refresh || "local-refresh");
+      setAuth({
+        access: data.access || "local-access",
+        refresh: data.refresh || "local-refresh",
+      });
+
+      saveProfile({
+        ...DEFAULT_PROFILE,
+        full_name: form.full_name,
+        email: form.email,
+        university: form.university,
+        specialty: form.faculty,
+        group: form.group,
+        role: form.role,
+      });
+
+      setPage("home");
+    } catch (errorObject) {
+      setError(errorObject.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <AuthScreen title="Тіркелу" subtitle="Студент деректерін толық енгізіңіз">
+      <input
+        placeholder="Username"
+        value={form.username}
+        onChange={(event) => update("username", event.target.value)}
+      />
       <input
         placeholder="ФИО"
         value={form.full_name}
@@ -1648,24 +1872,19 @@ function RegisterPage({ setPage, setAuth, saveProfile }) {
         onChange={(event) => update("email", event.target.value)}
       />
       <input
-        placeholder="Группа"
-        value={form.group}
-        onChange={(event) => update("group", event.target.value)}
-      />
-      <input
-        placeholder="Специальность"
-        value={form.specialty}
-        onChange={(event) => update("specialty", event.target.value)}
-      />
-      <input
-        placeholder="Student ID"
-        value={form.student_id}
-        onChange={(event) => update("student_id", event.target.value)}
-      />
-      <input
         placeholder="Университет"
         value={form.university}
         onChange={(event) => update("university", event.target.value)}
+      />
+      <input
+        placeholder="Факультет"
+        value={form.faculty}
+        onChange={(event) => update("faculty", event.target.value)}
+      />
+      <input
+        placeholder="Группа"
+        value={form.group}
+        onChange={(event) => update("group", event.target.value)}
       />
       <input
         placeholder="Құпиясөз"
@@ -1673,12 +1892,13 @@ function RegisterPage({ setPage, setAuth, saveProfile }) {
         value={form.password}
         onChange={(event) => update("password", event.target.value)}
       />
-      <button type="button" onClick={register} disabled={!canSubmit}>
-        Тіркелу және кіру
+      <button type="button" onClick={register} disabled={!canSubmit || submitting}>
+        {submitting ? "Тіркелуде..." : "Тіркелу және кіру"}
       </button>
       <button className="link-button" type="button" onClick={() => setPage("login")}>
         Login бетіне өту
       </button>
+      {error && <p className="form-error">{error}</p>}
     </AuthScreen>
   );
 }
