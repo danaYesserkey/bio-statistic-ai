@@ -3,7 +3,7 @@ from rest_framework import serializers
 from polymorphic.contrib.drf.serializers import PolymorphicSerializer
 # Local modules
 from apps.courses.models import Course, Module, Lesson, Content
-
+from apps.stats.models import CourseStatistics
 
 # 1. Сначала описываем самый глубокий уровень — Уроки
 class LessonSerializer(serializers.ModelSerializer):
@@ -70,7 +70,23 @@ class ContentSerializer(serializers.ModelSerializer):
 class LessonDetailSerializer(serializers.ModelSerializer):
     contents = ContentSerializer(many=True, read_only=True)
     has_access = serializers.BooleanField(default=True)
+    has_quiz = serializers.SerializerMethodField()
+    can_score = serializers.SerializerMethodField()
 
     class Meta:
         model = Lesson
-        fields = ["id", "module", "lesson_name", "order", "contents", "has_access"]
+        fields = ["id", "module", "lesson_name", "order", "contents", "has_access", "has_quiz", "can_score"]
+
+    def get_has_quiz(self, obj):
+        return hasattr(obj, 'quiz') and obj.quiz is not None
+
+    def get_can_score(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+
+        try:
+            stats = CourseStatistics.objects.get(lesson=obj, user=request.user)
+            return not stats.completed
+        except CourseStatistics.DoesNotExist:
+            return True

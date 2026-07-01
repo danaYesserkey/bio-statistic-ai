@@ -19,6 +19,10 @@ const DEFAULT_PROFILE = {
 
 const COURSE_ID = 1;
 
+const LOCAL_PRESENTATIONS = {
+  "File.pdf": "/presentations/data-types.pdf",
+};
+
 function normalizeModule(rawModule) {
   const lessons = (rawModule.lessons || [])
     .slice()
@@ -290,6 +294,8 @@ function App() {
         order: data.order,
         contents: data.contents || [],
         hasAccess: Boolean(data.has_access),
+        hasQuiz: Boolean(data.has_quiz),
+        canScore: Boolean(data.can_score),
       });
     } catch (error) {
       setLessonError(error.message);
@@ -1120,14 +1126,34 @@ function LessonPage({
                   <p className="course-status">Бұл сабаққа материал әлі қосылмаған.</p>
                 )}
 
-                {activeLesson.contents.map((item) =>
-                  item.mime_type === "application/pdf" ? (
-                    <PresentationViewer
-                      key={item.id}
-                      fileUrl={toAbsoluteFileUrl(item.file)}
-                      title={item.original_filename}
-                    />
-                  ) : (
+                {activeLesson.contents.map((item) => {
+                  const localPath = LOCAL_PRESENTATIONS[item.original_filename];
+
+                  if (item.mime_type === "application/pdf" && localPath) {
+                    return (
+                      <PresentationViewer
+                        key={item.id}
+                        fileUrl={localPath}
+                        title={item.original_filename}
+                      />
+                    );
+                  }
+
+                  if (item.mime_type === "application/pdf" && !localPath) {
+                    return (
+                      <a
+                        key={item.id}
+                        href={toAbsoluteFileUrl(item.file)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="lesson-content-row"
+                      >
+                        📎 {item.original_filename}
+                      </a>
+                    );
+                  }
+
+                  return (
                     <a
                       key={item.id}
                       href={toAbsoluteFileUrl(item.file)}
@@ -1137,46 +1163,50 @@ function LessonPage({
                     >
                       📎 {item.original_filename}
                     </a>
-                  )
-                )}
+                  );
+                })}
               </div>
 
-              <div className="module-quiz-card">
-                <div>
-                  <span>Сабақ материалы</span>
-                  <h3>{isCompleted ? "Сабақ аяқталды" : "Сабақты аяқтадыңыз ба?"}</h3>
-                  <p>
-                    {lessonScoreMessage ||
-                      (isCompleted
-                        ? "Бұл сабақ аяқталды деп белгіленген."
-                        : "Материалды оқып болғаннан кейін белгілеңіз.")}
-                  </p>
+              {activeLesson.canScore && (
+                <div className="module-quiz-card">
+                  <div>
+                    <span>Сабақ материалы</span>
+                    <h3>{isCompleted ? "Сабақ аяқталды" : "Сабақты аяқтадыңыз ба?"}</h3>
+                    <p>
+                      {lessonScoreMessage ||
+                        (isCompleted
+                          ? "Бұл сабақ аяқталды деп белгіленген."
+                          : "Материалды оқып болғаннан кейін белгілеңіз.")}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={lessonScoreLoading}
+                    onClick={() => markLessonComplete(activeLesson)}
+                  >
+                    {lessonScoreLoading
+                      ? "Сақталуда..."
+                      : isCompleted
+                      ? "Қайта белгілеу"
+                      : "Аяқталды деп белгілеу"}
+                  </button>
                 </div>
+              )}
 
-                <button
-                  type="button"
-                  disabled={lessonScoreLoading}
-                  onClick={() => markLessonComplete(activeLesson)}
-                >
-                  {lessonScoreLoading
-                    ? "Сақталуда..."
-                    : isCompleted
-                    ? "Қайта белгілеу"
-                    : "Аяқталды деп белгілеу"}
-                </button>
-              </div>
+              {activeLesson.hasQuiz && (
+                <div className="module-quiz-card">
+                  <div>
+                    <span>Сабақ тесті</span>
+                    <h3>Біліміңізді тексеріңіз</h3>
+                    <p>Материалды оқығаннан кейін quiz тапсырыңыз.</p>
+                  </div>
 
-              <div className="module-quiz-card">
-                <div>
-                  <span>Сабақ тесті</span>
-                  <h3>Біліміңізді тексеріңіз</h3>
-                  <p>Материалды оқығаннан кейін quiz тапсырыңыз.</p>
+                  <button type="button" onClick={() => startLessonQuiz(activeLesson)}>
+                    Quiz бастау
+                  </button>
                 </div>
-
-                <button type="button" onClick={() => startLessonQuiz(activeLesson)}>
-                  Quiz бастау
-                </button>
-              </div>
+              )}
             </>
           )}
         </>

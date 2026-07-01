@@ -112,32 +112,31 @@ class LessonViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = LessonDetailSerializer(instance=instance)
+        serializer = LessonDetailSerializer(instance=instance, context={'request': request})
 
-        try:
-            user = CustomUser.objects.get(id=request.user.id)
-        except Exception as e:
+        if not request.user.is_authenticated:
             return Response(serializer.data)
 
         try:
-            # user = CustomUser.objects.get(id=request.user.id)
-            previous_lesson = Lesson.objects.filter(id__lt=instance.id).order_by('-id').first()
-            statistics = CourseStatistics.objects.get(lesson=previous_lesson, user=user, course=previous_lesson.module.course)
+            user = CustomUser.objects.get(id=request.user.id)
+        except CustomUser.DoesNotExist:
+            return Response(serializer.data)
 
-            print(statistics)
-            print(previous_lesson)
+        previous_lesson = Lesson.objects.filter(id__lt=instance.id).order_by('-id').first()
 
-            if previous_lesson:
-                if not statistics.completed:
-                    return Response({"has_access": False})
-        except Exception as e:
-            print(e)
-            if not previous_lesson:
-                print('first attempt!')
-                return Response(serializer.data)
-            else:
-                return Response({"has_access": False})
-        
+        if not previous_lesson:
+            return Response(serializer.data)
+
+        try:
+            statistics = CourseStatistics.objects.get(
+                lesson=previous_lesson, 
+                user=user
+            )
+            if not statistics.completed:
+                return Response({"has_access": False}, status=status.HTTP_403_FORBIDDEN)
+        except CourseStatistics.DoesNotExist:
+            return Response({"has_access": False}, status=status.HTTP_403_FORBIDDEN)
+
         return Response(serializer.data)
 
     @action(
