@@ -1099,7 +1099,7 @@ function LessonContentBlock({ item }) {
     case "presentation":
       return (
         <PresentationViewer
-          fileUrl={LOCAL_PRESENTATIONS[item.content_url] || item.content_url}
+          fileUrl={item.content_url}
           title="Презентация"
         />
       );
