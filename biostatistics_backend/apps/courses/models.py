@@ -4,7 +4,7 @@ import mimetypes
 
 from django.utils.text import slugify
 from django.db import models
-# from polymorphic.models import PolymorphicModel
+from polymorphic.models import PolymorphicModel
 
 def get_course_file_upload_path(instance, filename):
     """Генерирует уникальный путь для загрузки файлов"""
@@ -51,7 +51,7 @@ class Lesson(models.Model):
     # Имя поля со схемы
     lesson_name = models.CharField(max_length=255)
     # Имя поля со схемы
-    content_kz = models.TextField(blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
     order = models.IntegerField()
 
     class Meta:
@@ -60,33 +60,68 @@ class Lesson(models.Model):
     def __str__(self):
         return self.lesson_name
 
-
-class Content(models.Model):
-    lesson = models.ForeignKey('Lesson', related_name="contents", on_delete=models.CASCADE)
-    order = models.PositiveIntegerField(default=0, verbose_name="Реттік нөмірі")
-    
-    # Одно поле для ВСЕХ файлов (pdf, docx, видео, картинки)
-    file = models.FileField(upload_to=get_course_file_upload_path, verbose_name="Файл")
-    
-    # Метаданные (заполняются сами при сохранении)
-    original_filename = models.CharField(max_length=255, editable=False, verbose_name="Түпнұсқа файл атауы")
-    file_size = models.PositiveBigIntegerField(editable=False, verbose_name="Файл өлшемі (байт)")
-    mime_type = models.CharField(max_length=100, editable=False, verbose_name="MIME-түрі")
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Қосылған уақыты")
+class Content(PolymorphicModel):
+    lesson = models.ForeignKey(Lesson, related_name="contents", on_delete=models.CASCADE)
+    order = models.PositiveIntegerField(default=0, blank=False, null=False)
 
     class Meta:
         ordering = ['order']
-        verbose_name = "Контент"
-        verbose_name_plural = "Контенттер"
-
-    def save(self, *args, **kwargs):
-        # Собираем метаданные только при загрузке нового файла
-        if self.file and not self.pk:
-            self.original_filename = self.file.name
-            self.file_size = self.file.size
-            guessed_type, _ = mimetypes.guess_type(self.file.name)
-            self.mime_type = guessed_type or "application/octet-stream"
-        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Материал: {self.original_filename} (Урок: {self.lesson})"
+        return f"{self.lesson} content"
+
+class TextContent(Content):
+    class TextTypeChoices(models.TextChoices):
+        IMPORTANT = 'important', 'Маңызды ақпарат'
+        DANGER = 'danger', 'Сақтық ақпарат'
+        TIP = 'tip', 'Кеңес'
+        BASE = 'base', 'Қарапайым мәтін'
+    
+    content = models.TextField()
+    text_type = models.TextField(choices=TextTypeChoices.choices, default=TextTypeChoices.BASE)
+
+    def __str__(self):
+        if len(self.content) > 90:
+            return f"Мәтін - {self.content[:90]}..."
+        return f"Мәтін - {self.content}"
+
+class HeadingContent(Content):
+    class LevelChoices(models.IntegerChoices):
+        H1 = 1, '1-деңгейлі'
+        H2 = 2, '2-деңгейлі'
+        H3 = 3, '3-деңгейлі'
+        H4 = 4, '4-деңгейлі'
+        H5 = 5, '5-деңгейлі'
+        H6 = 6, '6-деңгейлі'
+    
+    content = models.TextField()
+    h_level = models.SmallIntegerField(choices=LevelChoices.choices, default=LevelChoices.H2)
+
+    def __str__(self):
+        if len(self.content) > 90:
+            return f"Тақырып - {self.content[:90]}..."
+        return f"Тақырып - {self.content}"
+
+class ImageContent(Content):
+    content_url = models.FileField(upload_to=get_course_file_upload_path, verbose_name="Сурет")
+
+    def __str__(self):
+        return f"Сурет - {self.content_url}"
+
+class VideoContent(Content):
+    content_url = models.FileField(upload_to=get_course_file_upload_path, verbose_name="Бейне")
+
+    def __str__(self):
+        return f"Бейне - {self.content_url}"
+
+class YoutubeVideoContent(Content):
+    content_url = models.TextField()
+
+    def __str__(self):
+        return f"YouTube сілтемесі - {self.content_url}"
+
+class PresentationContent(Content):
+    content_url = models.FileField(upload_to=get_course_file_upload_path, verbose_name="Презентация")
+
+    def __str__(self):
+        return f"Презентация - {self.content_url}"

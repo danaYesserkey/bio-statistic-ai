@@ -1,7 +1,19 @@
 from django.contrib import admin
 from adminsortable2.admin import SortableStackedInline, SortableAdminBase
+from polymorphic.admin import StackedPolymorphicInline, PolymorphicInlineSupportMixin
 
-from apps.courses.models import Course, Module, Lesson, Content
+from apps.courses.models import (
+    Course,
+    Module,
+    Lesson,
+    Content,
+    ImageContent,
+    VideoContent,
+    PresentationContent,
+    TextContent,
+    HeadingContent,
+    YoutubeVideoContent,
+)
 from apps.quizzes.models import Quiz
 
 class ModuleInline(SortableStackedInline):
@@ -29,16 +41,49 @@ class ModuleAdmin(SortableAdminBase, admin.ModelAdmin):
     inlines = [LessonInline]
     fields = ('course', 'module_name',)
 
+class ContentInline(StackedPolymorphicInline):
+    class TextContentInline(StackedPolymorphicInline.Child):
+        model = TextContent
+        fields = ('content', 'text_type',)
+    
+    class HeadingContentInline(StackedPolymorphicInline.Child):
+        model = HeadingContent
+        fields = ('content', 'h_level',)
+    
+    class ImageContentInline(StackedPolymorphicInline.Child):
+        model = ImageContent
+        fields = ('content_url',)
+    
+    class VideoContentInline(StackedPolymorphicInline.Child):
+        model = VideoContent
+        fields = ('content_url',)
+    
+    class YoutubeVideoContentInline(StackedPolymorphicInline.Child):
+        model = YoutubeVideoContent
+        fields = ('content_url',)
+    
+    class PresentationContentInline(StackedPolymorphicInline.Child):
+        model = PresentationContent
+        fields = ('content_url',)
+    
+    model = Content
+    child_inlines = (
+        TextContentInline,
+        HeadingContentInline,
+        ImageContentInline,
+        VideoContentInline,
+        YoutubeVideoContentInline,
+        PresentationContentInline,
+    )
 
-# --- МАТЕРИАЛЫ УРОКА (Вместо старых полиморфных инлайнов) ---
-class ContentInline(SortableStackedInline):
+class ContentOrderInline(SortableStackedInline):
     model = Content
     extra = 0
-    # Поля, которые препод будет видеть/заполнять при добавлении файла прямо в уроке
-    fields = ('file', 'order', 'original_filename', 'file_size', 'mime_type')
-    # Метаданные защищаем от редактирования руками
-    readonly_fields = ('original_filename', 'file_size', 'mime_type')
+    can_delete = False
+    verbose_name_plural = 'Мазмұн реттілігі'
 
+    def has_add_permission(self, request, obj=None):
+        return False
 
 class QuizInline(admin.TabularInline):
     model = Quiz
@@ -47,13 +92,13 @@ class QuizInline(admin.TabularInline):
 
 
 @admin.register(Lesson)
-class LessonAdmin(SortableAdminBase, admin.ModelAdmin):
+class LessonAdmin(SortableAdminBase, PolymorphicInlineSupportMixin, admin.ModelAdmin):
     list_display = ('id', 'lesson_name', 'module', 'order')
     
     fieldsets = (
         ('Основная информация', {
-            'fields': ('module', 'lesson_name',)
+            'fields': ('module', 'lesson_name', 'description',)
         }),
     )
 
-    inlines = (QuizInline, ContentInline)
+    inlines = (QuizInline, ContentOrderInline, ContentInline)

@@ -291,8 +291,9 @@ function App() {
         id: data.id,
         module: data.module,
         title: data.lesson_name,
+        description: data.description || "",
         order: data.order,
-        contents: data.contents || [],
+        contents: (data.contents || []).slice().sort((a, b) => a.order - b.order),
         hasAccess: Boolean(data.has_access),
         hasQuiz: Boolean(data.has_quiz),
         canScore: Boolean(data.can_score),
@@ -1074,6 +1075,73 @@ function CoursePage({
   );
 }
 
+function LessonContentBlock({ item }) {
+  switch (item.type) {
+    case "heading": {
+      const Tag = `h${Math.min(Math.max(item.h_level || 2, 1), 6)}`;
+      return <Tag className="lesson-block-heading">{item.content}</Tag>;
+    }
+
+    case "text":
+      return (
+        <p className={`lesson-block-text lesson-block-text--${item.text_type || "base"}`}>
+          {item.content}
+        </p>
+      );
+
+    case "image":
+      return (
+        <div className="lesson-block-image">
+          <img src={item.content_url} alt="" loading="lazy" />
+        </div>
+      );
+
+    case "presentation":
+      return (
+        <PresentationViewer
+          fileUrl={LOCAL_PRESENTATIONS[item.content_url] || item.content_url}
+          title="Презентация"
+        />
+      );
+
+    case "youtube": {
+      const isRawIframe = item.content_url?.trimStart().startsWith("<iframe");
+
+      if (isRawIframe) {
+        return (
+          <div
+            className="lesson-block-youtube"
+            dangerouslySetInnerHTML={{ __html: item.content_url }}
+          />
+        );
+      }
+
+      return (
+        <div className="lesson-block-youtube">
+          <iframe
+            src={item.content_url}
+            title="YouTube video"
+            allowFullScreen
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          />
+        </div>
+      );
+    }
+    
+    case "video":
+      return (
+        <div className="lesson-block-video">
+          <video controls src={item.content_url}>
+            Браузер бейнені қолдамайды.
+          </video>
+        </div>
+      );
+
+    default:
+      return null;
+  }
+}
+
 function LessonPage({
   activeLesson,
   lessonLoading,
@@ -1111,6 +1179,9 @@ function LessonPage({
           <div className="page-heading">
             <p className="page-kicker">Сабақ</p>
             <h1>{activeLesson.title}</h1>
+            {activeLesson.description && (
+              <p className="page-subtitle">{activeLesson.description}</p>
+            )}
           </div>
 
           {!activeLesson.hasAccess && (
@@ -1126,45 +1197,9 @@ function LessonPage({
                   <p className="course-status">Бұл сабаққа материал әлі қосылмаған.</p>
                 )}
 
-                {activeLesson.contents.map((item) => {
-                  const localPath = LOCAL_PRESENTATIONS[item.original_filename];
-
-                  if (item.mime_type === "application/pdf" && localPath) {
-                    return (
-                      <PresentationViewer
-                        key={item.id}
-                        fileUrl={localPath}
-                        title={item.original_filename}
-                      />
-                    );
-                  }
-
-                  if (item.mime_type === "application/pdf" && !localPath) {
-                    return (
-                      <a
-                        key={item.id}
-                        href={toAbsoluteFileUrl(item.file)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="lesson-content-row"
-                      >
-                        📎 {item.original_filename}
-                      </a>
-                    );
-                  }
-
-                  return (
-                    <a
-                      key={item.id}
-                      href={toAbsoluteFileUrl(item.file)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="lesson-content-row"
-                    >
-                      📎 {item.original_filename}
-                    </a>
-                  );
-                })}
+                {activeLesson.contents.map((item, index) => (
+                  <LessonContentBlock key={index} item={item} />
+                ))}
               </div>
 
               {activeLesson.canScore && (
