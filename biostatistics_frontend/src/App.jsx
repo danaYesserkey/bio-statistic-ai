@@ -135,10 +135,11 @@ function App() {
   }, [messages, loading]);
 
   useEffect(() => {
+    if (!isLoggedIn) return;
     loadCourse();
     loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isLoggedIn]);
 
   const saveProfile = (nextProfile) => {
     setProfile(nextProfile);
@@ -652,7 +653,7 @@ function App() {
     const hasPassed = Boolean(activeQuiz?.quiz?.passed);
 
     if (!hasPassed) {
-      await startModuleQuiz(activeQuiz.lesson);
+      await startLessonQuiz(activeQuiz.lesson);
       return;
     }
 
@@ -674,7 +675,7 @@ function App() {
         throw new Error(data.detail || data.error || "Quiz қайта бастау қатесі.");
       }
 
-      await startModuleQuiz(activeQuiz.lesson);
+      await startLessonQuiz(activeQuiz.lesson);
     } catch (error) {
       setQuizError(error.message);
     } finally {
@@ -708,6 +709,8 @@ function App() {
 
     if (!activeQuiz?.isSubmitted) {
       submitQuizAttempt();
+    } else {
+      setPage("lesson");
     }
   };
 
@@ -1883,22 +1886,40 @@ function RegisterPage({ setPage, setAuth, saveProfile }) {
     setSubmitting(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/users/register/`, {
+      const registerResponse = await fetch(`${API_BASE_URL}/api/users/register/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const data = await response.json().catch(() => ({}));
+      const registerData = await registerResponse.json().catch(() => ({}));
 
-      if (!response.ok) {
-        throw new Error(data.detail || data.error || "Тіркелу қатесі.");
+      if (!registerResponse.ok) {
+        throw new Error(
+          registerData.detail || registerData.error || "Тіркелу қатесі."
+        );
       }
 
-      localStorage.setItem("access", data.access || "local-access");
-      localStorage.setItem("refresh", data.refresh || "local-refresh");
+      const loginResponse = await fetch(`${API_BASE_URL}/api/users/login/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: form.email,
+          password: form.password,
+        }),
+      });
+      const loginData = await loginResponse.json().catch(() => ({}));
+
+      if (!loginResponse.ok) {
+        throw new Error(
+          loginData.detail || loginData.error || "Тіркелгеннен кейін кіру қатесі."
+        );
+      }
+
+      localStorage.setItem("access", loginData.access);
+      localStorage.setItem("refresh", loginData.refresh);
       setAuth({
-        access: data.access || "local-access",
-        refresh: data.refresh || "local-refresh",
+        access: loginData.access,
+        refresh: loginData.refresh,
       });
 
       saveProfile({
