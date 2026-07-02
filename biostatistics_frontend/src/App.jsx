@@ -130,6 +130,11 @@ function App() {
 
   const isLoggedIn = Boolean(auth.access || localStorage.getItem("registeredLocal"));
 
+  const activeModule = useMemo(() => {
+    if (!course || !activeLesson) return null;
+    return course.modules.find((m) => m.id === activeLesson.module);
+  }, [course, activeLesson]);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, loading]);
@@ -473,7 +478,7 @@ function App() {
         throw new Error(
           data.detail ||
             data.error ||
-            `Quiz жүктелмеді. Lesson ID: ${module.lessonId}`
+            `Quiz жүктелмеді. Lesson ID: ${lesson.id}`
         );
       }
 
@@ -786,6 +791,7 @@ function App() {
         {page === "lesson" && (
           <LessonPage
             activeLesson={activeLesson}
+            activeModule={activeModule}
             lessonLoading={lessonLoading}
             lessonError={lessonError}
             startLessonQuiz={startLessonQuiz}
@@ -794,6 +800,7 @@ function App() {
             lessonScoreLoading={lessonScoreLoading}
             lessonScoreMessage={lessonScoreMessage}
             courseProgress={courseProgress}
+            openLesson={openLesson}
           />
         )}
 
@@ -995,6 +1002,52 @@ function getCourseStats(modules, courseProgress) {
   };
 }
 
+function SegmentedProgressBar({ lessons = [], progress = {}, onSegmentClick = null, activeLessonId = null }) {
+  if (!lessons.length) return null;
+
+  const completedLessons = progress.lessonsCompleted || [];
+  const passedLessons = progress.passedLessons || [];
+
+  return (
+    <div className="segmented-progress-bar">
+      {lessons.map((lesson, index) => {
+        const isCompleted = completedLessons.includes(lesson.id);
+        const isQuizPassed = passedLessons.includes(lesson.id);
+        const isActive = activeLessonId === lesson.id;
+
+        let status = "not-started";
+        if (isQuizPassed) status = "quiz-passed";
+        else if (isCompleted) status = "completed";
+
+        let className = `progress-segment ${status}`;
+        if (isActive) className += " active";
+
+        const Tag = onSegmentClick ? "button" : "div";
+        const elementProps = onSegmentClick
+          ? {
+              type: "button",
+              onClick: (e) => {
+                e.stopPropagation();
+                onSegmentClick(lesson);
+              },
+            }
+          : {};
+
+        return (
+          <Tag
+            key={lesson.id}
+            className={className}
+            title={`${index + 1}. ${lesson.title}`}
+            {...elementProps}
+          >
+            {onSegmentClick && <span className="segment-tooltip">{lesson.title}</span>}
+          </Tag>
+        );
+      })}
+    </div>
+  );
+}
+
 function CoursePage({
   course,
   courseLoading,
@@ -1043,6 +1096,7 @@ function CoursePage({
                   <div>
                     <h2>{module.title}</h2>
                     <p>{module.description}</p>
+                    <SegmentedProgressBar lessons={module.lessons} progress={progress} />
                   </div>
                 </div>
 
@@ -1147,6 +1201,7 @@ function LessonContentBlock({ item }) {
 
 function LessonPage({
   activeLesson,
+  activeModule,
   lessonLoading,
   lessonError,
   startLessonQuiz,
@@ -1155,6 +1210,7 @@ function LessonPage({
   lessonScoreLoading,
   lessonScoreMessage,
   courseProgress,
+  openLesson,
 }) {
   const moduleProgress = activeLesson
     ? courseProgress?.[activeLesson.module] || {}
@@ -1179,6 +1235,23 @@ function LessonPage({
 
       {!lessonLoading && !lessonError && activeLesson && (
         <>
+          {activeModule && (
+            <div className="lesson-module-progress-nav">
+              <div className="progress-nav-info">
+                <span className="module-tag">Модуль: {activeModule.title}</span>
+                <span className="progress-ratio">
+                  Сабақ {activeModule.lessons.findIndex((l) => l.id === activeLesson.id) + 1} / {activeModule.lessons.length}
+                </span>
+              </div>
+              <SegmentedProgressBar
+                lessons={activeModule.lessons}
+                progress={moduleProgress}
+                onSegmentClick={openLesson}
+                activeLessonId={activeLesson.id}
+              />
+            </div>
+          )}
+
           <div className="page-heading">
             <p className="page-kicker">Сабақ</p>
             <h1>{activeLesson.title}</h1>

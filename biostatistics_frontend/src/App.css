@@ -1469,3 +1469,120 @@ button:disabled {
   height: 100%;
   border: none;
 }
+
+/* Segmented Progress Bar */
+.segmented-progress-bar {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.progress-segment {
+  height: 6px;
+  flex: 1;
+  border-radius: 3px;
+  background-color: var(--gray-border);
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progress-segment.completed {
+  background-color: var(--kaznmu-blue-light);
+  box-shadow: 0 0 4px rgba(30, 74, 138, 0.3);
+}
+
+.progress-segment.quiz-passed {
+  background-color: var(--medical-green);
+  box-shadow: 0 0 4px rgba(46, 139, 87, 0.3);
+}
+
+/* Interactive segments in LessonPage */
+button.progress-segment {
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  outline: none;
+}
+
+button.progress-segment:hover {
+  transform: scaleY(1.5);
+}
+
+button.progress-segment.active {
+  background-color: var(--ai-gold);
+  transform: scaleY(1.5);
+  box-shadow: 0 0 6px rgba(212, 175, 55, 0.5);
+}
+
+/* Tooltips for interactive segments */
+.progress-segment .segment-tooltip {
+  visibility: hidden;
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background-color: var(--text-dark);
+  color: var(--white);
+  text-align: center;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+}
+
+.progress-segment:hover .segment-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.lesson-module-progress-nav {
+  background: var(--white);
+  padding: 16px 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--gray-border);
+  margin-bottom: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.progress-nav-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.progress-nav-info .module-tag {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-gray);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 75%;
+}
+
+.progress-nav-info .progress-ratio {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--kaznmu-blue);
+}
+
+.lesson-module-progress-nav .segmented-progress-bar {
+  max-width: 100%;
+  gap: 8px;
+  margin-top: 0;
+}
+
+.lesson-module-progress-nav .progress-segment {
+  height: 8px;
+  border-radius: 4px;
+}
