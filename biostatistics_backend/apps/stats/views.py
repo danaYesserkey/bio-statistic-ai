@@ -3,7 +3,7 @@ from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status, viewsets
-from django.db.models import Avg
+from django.db.models import Avg, Count, Case, When, FloatField, Value, F
 
 from .models import CourseStatistics
 from apps.courses.models import Lesson, Course, Module
@@ -74,15 +74,25 @@ class CourseStatsViewSet(viewsets.ViewSet):
 
             completed_quizzes = QuizAttempt.objects.filter(
                 user=user,
-                quiz__lesson__module__course=course
+                quiz__lesson__module__course=course,
+                passed=True,
             ).count()
 
             quiz_attempts = QuizAttempt.objects.filter(
                 user=user,
                 quiz__lesson__module__course=course
+            ).annotate(
+                question_count=Count('quiz__questions', distinct=True)
+            ).annotate(
+                score_percentage=Case(
+                    When(question_count=0, then=Value(0.0)),
+                    default=F('score') * 100.0 / F('question_count'),
+                    output_field=FloatField()
+                )
             )
+
             average_quiz_score = (
-                quiz_attempts.aggregate(avg_score=Avg('score'))['avg_score'] or 0
+                quiz_attempts.aggregate(avg_score=Avg('score_percentage'))['avg_score'] or 0
             )
 
             total_items = total_lessons + total_quizzes
@@ -130,6 +140,7 @@ class CourseStatsViewSet(viewsets.ViewSet):
                 'total_lessons': total_lessons,
                 'completed_lessons': completed_lessons,
                 'total_quizzes': total_quizzes,
+                'total_quizz_attempts': quiz_attempts.count(),
                 'completed_quizzes': completed_quizzes,
                 'average_quiz_score': round(average_quiz_score, 2),
                 'modules': modules_stats,

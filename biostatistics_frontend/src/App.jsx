@@ -290,7 +290,7 @@ function App() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data.detail || data.error || "Сабақ жүктелмеді.");
+        throw new Error(data.detail || data.error || "Сабақты көру үшін алдыңғы сабақты аяқтауыңыз керек");
       }
 
       setActiveLesson({
@@ -535,7 +535,7 @@ function App() {
 
   const discussWrongQuizAnswer = async (question, answer, canReturnToQuiz) => {
     const visibleText =
-      `Мен тест тапсырмасында қате жауап бердім. Мен таңдаған жауап: "` +
+      `Мен '` + question.text + `' сұрағына қате жауап бердім. Мен таңдаған жауап: "` +
       `${answerTextForChat(question, answer)}".`;
 
     setPendingQuiz(
@@ -1262,7 +1262,7 @@ function LessonPage({
 
           {!activeLesson.hasAccess && (
             <p className="course-status course-status-error">
-              Бұл сабаққа қолжетімділігіңіз жоқ.
+              Сабақты көру үшін алдыңғы сабақты аяқтауыңыз керек
             </p>
           )}
 
@@ -1502,7 +1502,7 @@ function QuizPage({
               {context.text && <p>{context.text}</p>}
               {context.dataset_file && (
                 <a
-                  href={context.dataset_file}
+                  href={API_BASE_URL+context.dataset_file}
                   target="_blank"
                   rel="noreferrer"
                   className="quiz-context-file"
@@ -1816,24 +1816,24 @@ function ProfilePage({
           <span>Орташа балл</span>
           <strong>{scoreText}</strong>
           <p>
-            {courseStats?.completed_quizzes
-              ? `${courseStats.completed_quizzes} тест тапсырылды`
+            {courseStats?.total_quizz_attempts
+              ? `${courseStats.total_quizz_attempts} рет тест тапсырылды`
               : "Quiz нәтижесі жоқ"}
           </p>
         </article>
 
         <article className="profile-metric-card profile-metric-card--plain">
-          <span>Аяқталған модульдер</span>
+          <span>Курс бойынша</span>
           <strong>
             {courseStats?.completed_modules ?? 0}/{courseStats?.total_modules ?? 0}
           </strong>
-          <p>Курс бойынша</p>
+          <p>Аяқталған модульдер</p>
         </article>
 
         <article className="profile-metric-card profile-metric-card--plain">
-          <span>Тест саны</span>
-          <strong>{courseStats?.total_quizzes ?? 0}</strong>
-          <p>Тапсырылған quiz</p>
+          <span>Курс бойынша</span>
+          <strong>{courseStats?.completed_quizzes ?? 0}/{courseStats?.total_quizzes ?? 0}</strong>
+          <p>Аяқталған тесттер</p>
         </article>
       </div>
 

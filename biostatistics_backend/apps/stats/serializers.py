@@ -18,6 +18,7 @@ class CourseStatsSerializer(serializers.Serializer):
     total_lessons = serializers.IntegerField()
     completed_lessons = serializers.IntegerField()
     total_quizzes = serializers.IntegerField()
+    total_quizz_attempts = serializers.IntegerField()
     completed_quizzes = serializers.IntegerField()
     average_quiz_score = serializers.FloatField()
     modules = ModuleStatsSerializer(many=True)

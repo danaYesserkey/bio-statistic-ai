@@ -133,9 +133,9 @@ class LessonViewSet(viewsets.ModelViewSet):
                 user=user
             )
             if not statistics.completed:
-                return Response({"has_access": False}, status=status.HTTP_403_FORBIDDEN)
+                return Response({"has_access": False})
         except CourseStatistics.DoesNotExist:
-            return Response({"has_access": False}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"has_access": False})
 
         return Response(serializer.data)
 
